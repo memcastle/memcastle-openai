@@ -168,6 +168,13 @@ esac
                     # the installed copy and Codex marketplace remain intact either way.
                     assert receipt["assets_root"] == str(old_assets) or "/plugins/openai/" in receipt["assets_root"], receipt
                     assert (root / "data/memcastle/agents/codex/mcp.json").is_file()
+                    # The provider owns the integration manifest, so it must also prove its advertised skills
+                    # reached the installed agent copy after the Core bundle stopped shipping any integration.
+                    declared = ROOT / "modules/codex/memcastle-integration.toml"
+                    skills = tomllib.loads(declared.read_text())["skills"]
+                    assert {skill["name"] for skill in skills} == set(receipt["skills"])
+                    for skill in skills:
+                        assert (root / "data/memcastle/agents/codex/skills" / skill["name"] / "SKILL.md").is_file()
             if b'memcastle = ">=0.4, <0.6"' in archive:
                 try:
                     request(base, "/api/plugins/preview", method="POST", data=incompatible(archive))
