@@ -29,7 +29,8 @@ Commit both source `Cargo.lock` files, the reviewed hashes, fixtures and code to
 Provider CI builds only these two modules, checks their tests and validates the archive against Core's shared workflow.
 That workflow tests Core `main`, reports its exact SHA and accepts additional plugin-capable stable versions;
 Core 0.4.1 predates plugin installation and cannot join the matrix.
-Core `main` must include orphaned-bundle adoption support before the bundled-upgrade smoke can pass in provider CI.
+The bundled-upgrade smoke verifies the manual `source remove` step before `--adopt-source`, without a Core-specific
+automatic ownership transfer.
 
 For a release, advance `plugin.version` and each changed module version, then repackage and review the hashes and
 compatibility matrix on `main`.

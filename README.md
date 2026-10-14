@@ -31,8 +31,8 @@ No module needs a private Core checkout or a sibling provider to build or test.
 The install smoke checks local catalogue discovery, digest verification and the Codex marketplace registration
 in an isolated daemon and agent home.
 The adoption smoke installs both historic sources and verifies miners, cursors and mined documents survive an explicit handoff.
-The bundled-upgrade smoke starts with an enabled Core-style bundle, removes it between daemon starts and checks that
-plugin adoption preserves enabled state and history without deleting the stored package row.
+The bundled-upgrade smoke starts with an enabled Core-style bundle, removes it between daemon starts, then confirms that
+manual source removal is needed before adoption and that mined history survives the handoff.
 The ChatGPT smoke exercises export and synthetic web history, project selection and repeated sweeps without network access.
 Provider CI builds and packages locally, then calls Core's shared artifact-validation workflow for a `[main, versions...]`
 matrix, with additional exact plugin-capable
@@ -48,10 +48,14 @@ Only tag after reviewing the exact packaged hashes and the validation results; t
 
 ### Migration from Core
 
-After updating Core, preview `memcastle plugin install openai` and supply the printed consent digests for both sources.
+After updating Core, remove any old bundled package rows with `memcastle source remove codex` and/or
+`memcastle source remove chatgpt` before installing this plugin.
+This leaves mined data, cursors and `[[miners]]` definitions intact, but resets activation and deletes the old source's
+credential; sign in to ChatGPT again for web mining.
+Preview `memcastle plugin install openai` and supply the printed consent digests for both sources.
 On an existing palace mined by the old Core-bundled `codex` or `chatgpt` source, also pass
 `--adopt-source codex --adopt-source chatgpt` for whichever sources have mined data.
-Remove a separately installed legacy source package with that ID before installing the plugin.
+Remove a separately installed legacy source package with that ID before installing the plugin as well.
 Run `memcastle source enable codex` and/or `memcastle source enable chatgpt`, then
 `memcastle integration install codex` to register the Codex marketplace extension.
 Keep existing `[[miners]]` entries, locators, account labels and project filters unchanged;

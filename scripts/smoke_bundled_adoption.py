@@ -79,15 +79,19 @@ def handoff(binary, archive, name):
             before = next(item for item in request(base, "/api/sources")["sources"] if item["source"] == name)
         finally:
             stop(process)
-        # A Core upgrade removes the old bundle while leaving its enabled-state row and mined history in the palace.
+        # A Core upgrade removes the old bundle but keeps its row until the user removes it explicitly.
         process = start(binary, root, new_assets, port)
         try:
             orphan = request(base, f"/api/source-packages/{name}")
             assert orphan["origin"] == "bundled", orphan
             try:
-                preview = request(base, "/api/plugins/preview", method="POST", data=archive)
+                request(base, "/api/plugins/preview", method="POST", data=archive)
             except HTTPError as error:
-                raise AssertionError(f"orphaned {name} bundle refused: {json.load(error)}") from error
+                assert error.code == 409 and json.load(error)["code"] == "memcastle::plugin::blocked"
+            else:
+                raise AssertionError(f"plugin claimed {name} without removing its old package row")
+            request(base, f"/api/source-packages/{name}", method="DELETE")
+            preview = request(base, "/api/plugins/preview", method="POST", data=archive)
             assert preview["adoptions"] == [name], preview
             consents = {item["source"]: item["digest"] for item in preview["source_consents"]}
             request(base, "/api/plugins", method="POST", data=archive, headers={
@@ -95,10 +99,11 @@ def handoff(binary, archive, name):
                 "X-MemCastle-Adopt-Sources": json.dumps([name]),
             })
             record = request(base, f"/api/source-packages/{name}")
-            assert record["origin"] == "plugin" and record["state"] == "enabled", record
+            assert record["origin"] == "plugin" and record["state"] == "installed", record
             after = next(item for item in request(base, "/api/sources")["sources"] if item["source"] == name)
             assert (before["cursor"], before["documents"]) == (after["cursor"], after["documents"]), (before, after)
             assert request(base, f"/api/miners/{name}")["source"] == name
+            request(base, f"/api/source-packages/{name}/enable", method="POST")
             assert mine(base, name, locator)["created"] == 0
         finally:
             stop(process)
@@ -109,4 +114,4 @@ if __name__ == "__main__":
     plugin = (ROOT / "dist/openai-0.1.0.tar.gz").read_bytes()
     for source in ("codex", "chatgpt"):
         handoff(executable, plugin, source)
-    print("Core-bundled Codex and ChatGPT state, miners and documents survived the upgrade")
+    print("Core-bundled Codex and ChatGPT miners and documents survived manual source removal and adoption")
