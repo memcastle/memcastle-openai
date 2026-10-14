@@ -1,7 +1,9 @@
 [template]
 source = "https://github.com/memcastle/memcastle-plugin.tpl"
+ref = "ci/codecov"
 
 [answers]
+codecov = true
 description = "OpenAI Codex and ChatGPT history with Codex integration"
 github_owner = "memcastle"
 integration_template = "https://github.com/memcastle/memcastle-integration.tpl"

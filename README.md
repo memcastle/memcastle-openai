@@ -1,5 +1,8 @@
 # memcastle-openai
 
+Coverage CI measures native Rust tests for both history sources and uploads LCOV to Codecov with GitHub OIDC.
+Enable this repository in Codecov for PR coverage status.
+
 OpenAI Codex and ChatGPT history with Codex integration.
 
 This independently released plugin owns the `codex` and `chatgpt` history sources and the Codex agent integration.
