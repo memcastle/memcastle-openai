@@ -1,7 +1,10 @@
 [template]
 source = "https://github.com/memcastle/memcastle-plugin.tpl"
+ref = "ci/gh-ship"
 
 [answers]
+gh_ship = true
+ship_token = "app"
 description = "OpenAI Codex and ChatGPT history with Codex integration"
 github_owner = "memcastle"
 integration_template = "https://github.com/memcastle/memcastle-integration.tpl"
