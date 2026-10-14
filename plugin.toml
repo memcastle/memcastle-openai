@@ -1,0 +1,41 @@
+format = 1
+memcastle = ">=0.4, <0.6"
+
+[plugin]
+id = "openai"
+version = "0.1.0"
+provider = "openai"
+description = "OpenAI Codex and ChatGPT history with Codex integration"
+repository = "https://github.com/memcastle/memcastle-openai"
+license = "MIT"
+
+
+
+[[modules]]
+id = "codex"
+type = "source"
+version = "0.1.0"
+manifest = "modules/codex/memcastle-source.toml"
+manifest_sha256 = "a128c167b7efb80ef96f84aead0553a7213b59a273faac8bd682367771424815"
+entry = "modules/codex/source.wasm"
+sha256 = "fd73e69ce95891e361ea30edc7a0efb4362ff229d8444aced4303ce05d6b5963"
+contract = "0.4.0"
+
+[[modules]]
+id = "chatgpt"
+type = "source"
+version = "0.1.0"
+manifest = "modules/chatgpt/memcastle-source.toml"
+manifest_sha256 = "1bb5e0720e1da31d8f1ffcd142ef86d2c2453920972d6e0e316ac31adb8d030d"
+entry = "modules/chatgpt/source.wasm"
+sha256 = "d32cf847fdfa5e64153ed3940a7a3bb51aa49ea38ce6ca8ed8297842f7bd13d5"
+contract = "0.4.0"
+
+[[modules]]
+id = "codex"
+type = "integration"
+version = "0.1.0"
+manifest = "modules/codex/memcastle-integration.toml"
+manifest_sha256 = "e0008380dd258e9e404b95ae9874617ef6b67e20b2f83dcff1202e818e1a76c2"
+entry = "modules/codex/dist/.agents/plugins/marketplace.json"
+sha256 = "f3c25bfcf96da589b157395466a253e65e2168d9d8bf9e0d59ab8baf802fa6bf"

@@ -1,0 +1,21 @@
+[template]
+source = "https://github.com/memcastle/memcastle-plugin.tpl"
+
+[answers]
+description = "OpenAI Codex and ChatGPT history with Codex integration"
+github_owner = "memcastle"
+integration_template = "https://github.com/memcastle/memcastle-integration.tpl"
+integrations = []
+memcastle = ">=0.4, <0.6"
+plugin_id = "openai"
+provider = "openai"
+repository_name = "memcastle-openai"
+source_template = "https://github.com/memcastle/memcastle-source.tpl"
+sources = ["codex", "chatgpt"]
+version = "0.1.0"
+
+[[composed]]
+from = "sources"
+source = "https://github.com/memcastle/memcastle-source.tpl"
+ref = "5f2a8350bd82c49ec2370d70c83019ff6fc5a822"
+commit = "5f2a8350bd82c49ec2370d70c83019ff6fc5a822"

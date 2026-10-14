@@ -1,0 +1,2 @@
+# Cursor revisions and conformance fixtures depend on exact source bytes.
+modules/*/fixtures/** -text
