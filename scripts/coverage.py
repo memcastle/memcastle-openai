@@ -26,6 +26,9 @@ for module in manifest.get("modules", []):
         subprocess.run(("bun", "install", "--frozen-lockfile"), cwd=directory, check=True)
         subprocess.run(("bun", "run", "test:cover"), cwd=directory, check=True)
         report = directory / "coverage" / "lcov.info"
+        if not report.is_file():
+            print(f"No instrumentable integration code in {directory}")
+            continue
     else:
         continue
     if not report.is_file() or not report.stat().st_size:

@@ -18,6 +18,9 @@ jobs:
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: '1.4.2'
+      - uses: memcastle/memcastle/.github/actions/core-binary@main
+        with:
+          version: main
       - name: Measure module tests
         id: reports
         run: python3 scripts/coverage.py
