@@ -40,6 +40,9 @@ if changed:
     tag = f"{plugin_id}/v{version}"
     manifest_path.write_text(re.sub(r'(?m)^version = "[^"]+"', f'version = "{version}"', text, count=1))
     notes = "\n".join(f"- {message.splitlines()[0]}" for message in commits) + "\n"
+    changelog = root / "CHANGELOG.md"
+    previous = changelog.read_text() if changelog.is_file() else "# Changelog\n\n"
+    changelog.write_text(previous.rstrip() + f"\n\n## {tag}\n\n{notes}")
     artifact.update(version=version, tag=tag, release={"notes": notes})
 (root / "ship.release.json").write_text(json.dumps(artifact, indent=2) + "\n")
 if output := os.environ.get("GITHUB_OUTPUT"):
