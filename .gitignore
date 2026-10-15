@@ -4,3 +4,4 @@ dist/
 modules/*/target/
 modules/*/source.wasm
 __pycache__/
+ship.release.json

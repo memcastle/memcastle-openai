@@ -1,5 +1,11 @@
 # memcastle-openai
 
+Release delivery uses gh-ship: releasable Conventional Commits open a `release/next` PR on pushes to `main`.
+Review and merge that PR to publish a validated `openai/vVERSION` archive. Configure the `release` environment
+with `APP_CLIENT_ID` (variable) and `APP_PRIVATE_KEY` (secret) for a GitHub App installed on this repository with
+contents, actions and pull requests write permissions (issues write for creating labels). Set squash title to PR title
+and squash message to blank. `prepare-release` accepts `dry_run` without pushing.
+
 OpenAI Codex and ChatGPT history with Codex integration.
 
 This independently released plugin owns the `codex` and `chatgpt` history sources and the Codex agent integration.
@@ -42,9 +48,9 @@ It runs on every pull request and every push to `main`, including merges, withou
 Every version exercises source fixtures and archive installation/activation; incompatible versions fail the workflow.
 The development release body records the exact Core source SHA, and the workflow summary reports it for each run.
 Core CI separately tests a freshly composed project against its current install contract.
-The provider's release workflow accepts only an `openai/v<plugin.toml version>` tag on `main`, then builds
-the reviewed artifact, runs manifest and compatibility-matrix tests, and refuses an existing release.
-Only tag after reviewing the exact packaged hashes and the validation results; the workflow publishes the archive.
+The publish workflow accepts only an `openai/v<plugin.toml version>` tag on `main`, then builds
+the reviewed artifact and runs manifest and compatibility-matrix tests before uploading to a draft release.
+Merge the Release PR after reviewing the packaged hashes and validation results; gh-ship creates the tag.
 
 ### Migration from Core
 
