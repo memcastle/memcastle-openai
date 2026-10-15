@@ -1,6 +1,5 @@
 [template]
 source = "https://github.com/memcastle/memcastle-plugin.tpl"
-ref = "ci/gh-ship"
 
 [answers]
 gh_ship = true
