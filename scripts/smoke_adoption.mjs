@@ -2,9 +2,9 @@
 import assert from "node:assert/strict"
 import { copyFileSync, mkdirSync, readFileSync } from "node:fs"
 import { join } from "node:path"
-import { ROOT, cli, isolated, mine } from "./smoke_common.mjs"
+import { ROOT, cli, isolated, mine, pluginArchive } from "./smoke_common.mjs"
 
-const plugin = readFileSync(join(ROOT, "dist/openai-0.1.0.tar.gz"))
+const plugin = readFileSync(pluginArchive())
 
 function fixture(root, name) {
   const module = join(ROOT, "sources", name)

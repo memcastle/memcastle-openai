@@ -1,20 +1,26 @@
 // Run provider-owned migration checks against a disposable Core daemon.
 import assert from "node:assert/strict"
 import { spawn, spawnSync } from "node:child_process"
-import { mkdtempSync, mkdirSync, rmSync } from "node:fs"
+import { mkdtempSync, mkdirSync, readdirSync, rmSync } from "node:fs"
 import { createServer } from "node:net"
 import { tmpdir } from "node:os"
 import { dirname, join, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
 
 export const ROOT = dirname(dirname(fileURLToPath(import.meta.url)))
-export const BIN = process.env.MEMCASTLE_BIN && resolve(process.env.MEMCASTLE_BIN)
-assert.ok(BIN, "set MEMCASTLE_BIN to a plugin-capable Core binary")
+export const BIN = process.env.MEMCASTLE_BIN ? resolve(process.env.MEMCASTLE_BIN) : "memcastle"
 
 export function cli(args, env, cwd = ROOT) {
   const result = spawnSync(BIN, args, { cwd, env, encoding: "utf8", timeout: 60000 })
   assert.equal(result.status, 0, `${BIN} ${args.join(" ")}: ${result.stderr || result.error}`)
   return result.stdout
+}
+
+export function pluginArchive() {
+  if (process.env.ARCHIVE) return resolve(ROOT, process.env.ARCHIVE)
+  const archives = readdirSync(join(ROOT, "dist")).filter((name) => name.startsWith("openai-") && name.endsWith(".tar.gz"))
+  assert.equal(archives.length, 1, "expected exactly one OpenAI plugin archive in dist/; set ARCHIVE to select one")
+  return join(ROOT, "dist", archives[0])
 }
 
 export async function mine(request, source, locator, options) {
