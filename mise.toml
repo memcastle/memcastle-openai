@@ -1,7 +1,6 @@
-[tasks.test]
-description = "Validate the Codex and ChatGPT source modules and provider metadata"
-run = "python3 scripts/check_modules.py && python3 -m unittest discover -s tests"
+[tools]
+git-cliff = "2.12.0"
 
 [tasks.package]
-description = "Build the standalone OpenAI plugin archive and reviewed digests"
-run = "python3 scripts/package.py"
+description = "Package prebuilt OpenAI modules with Core"
+run = "memcastle plugin package plugin.toml"
