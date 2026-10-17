@@ -3,6 +3,7 @@ modules/*/dist/
 modules/*/node_modules/
 modules/*/target/
 modules/*/coverage/
+modules/*/junit.xml
 modules/*/source.wasm
 __pycache__/
 ship.release.json

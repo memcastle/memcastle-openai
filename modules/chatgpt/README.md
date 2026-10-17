@@ -91,7 +91,9 @@ Validate it with a fresh user-owned session before relying on unattended mining.
 
 ## Development
 
-`python3 scripts/package.py` builds the component; `memcastle source test modules/chatgpt --no-build` runs its export fixture.
-`python3 scripts/check_modules.py` runs the native export-parser tests, and `scripts/smoke_chatgpt.py` exercises the
+Build the source for `wasm32-wasip2` with Cargo and use `memcastle plugin package plugin.toml` from the provider root;
+`memcastle source test modules/chatgpt --no-build` runs its export fixture.
+`cargo test --manifest-path modules/chatgpt/Cargo.toml --locked` runs the native export-parser tests, and
+`scripts/smoke_chatgpt.py` exercises the
 installed source against a stand-in `curl`, not a real account.
 Keep exports, session credentials and traffic captures private: they contain conversation text and account access.

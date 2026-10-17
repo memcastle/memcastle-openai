@@ -228,6 +228,11 @@ jobs:
               git ls-files --error-unmatch "$lock" >/dev/null || { echo "::error::commit $lock"; exit 1; }
             fi
           done
+          # A typed source/integration pair shares a directory; its fixture WASM is not an integration asset.
+          for manifest in modules/*/memcastle-integration.toml; do
+            module_dir="$(dirname "$manifest")"
+            if [[ -f "$module_dir/memcastle-source.toml" ]]; then rm -f "$module_dir/dist/source.wasm"; fi
+          done
           "$MEMCASTLE_BIN" plugin package plugin.toml --json > "$RUNNER_TEMP/plugin-package.json"
           git diff --exit-code -- plugin.toml || { echo '::error::packaging must not change plugin.toml'; exit 1; }
           git diff --exit-code -- manifest.toml || { echo '::error::commit the regenerated manifest.toml'; exit 1; }
@@ -238,6 +243,10 @@ jobs:
           tar -xOzf "$path" manifest.toml | grep '^\[plugin\]$' >/dev/null
           if tar -tf "$path" | grep -q '^plugin.toml$'; then echo '::error::the descriptor must not be archived'; exit 1; fi
           (cd "$(dirname "$path")" && sha256sum --check "$(basename "$checksum")")
+          for manifest in modules/*/memcastle-integration.toml; do
+            module_dir="$(dirname "$manifest")"
+            if [[ -f "$module_dir/memcastle-source.toml" ]]; then cp "$module_dir/source.wasm" "$module_dir/dist/source.wasm"; fi
+          done
           echo "path=$path" >> "$GITHUB_OUTPUT"
       - uses: actions/upload-artifact@v7
         with:
