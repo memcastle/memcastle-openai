@@ -28,7 +28,7 @@ version = "0.1.0"
 manifest = "modules/chatgpt/memcastle-source.toml"
 manifest_sha256 = "1bb5e0720e1da31d8f1ffcd142ef86d2c2453920972d6e0e316ac31adb8d030d"
 entry = "modules/chatgpt/source.wasm"
-sha256 = "d32cf847fdfa5e64153ed3940a7a3bb51aa49ea38ce6ca8ed8297842f7bd13d5"
+sha256 = "07a366f248a449533c6840df9578c69e4d5a147eed36db5b388a8c1ca93ef11a"
 optional = false
 contract = "0.4.0"
 
@@ -44,7 +44,7 @@ optional = false
 
 [checksums]
 "modules/chatgpt/memcastle-source.toml" = "1bb5e0720e1da31d8f1ffcd142ef86d2c2453920972d6e0e316ac31adb8d030d"
-"modules/chatgpt/source.wasm" = "d32cf847fdfa5e64153ed3940a7a3bb51aa49ea38ce6ca8ed8297842f7bd13d5"
+"modules/chatgpt/source.wasm" = "07a366f248a449533c6840df9578c69e4d5a147eed36db5b388a8c1ca93ef11a"
 "modules/codex/dist/.agents/plugins/marketplace.json" = "f3c25bfcf96da589b157395466a253e65e2168d9d8bf9e0d59ab8baf802fa6bf"
 "modules/codex/dist/mcp.json" = "6e36466808c590cd7e9f0bf155a4504974de7e8b22768fdf08f5c32b154e439b"
 "modules/codex/dist/plugin.json" = "12e9607d077425486382e4f2f95d78d3d3fd174cf0583126db6c30b62c430492"
