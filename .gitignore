@@ -1,4 +1,5 @@
 dist/
+manifest.toml
 !integrations/*/dist/
 !integrations/*/dist/**
 sources/*/target/

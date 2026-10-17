@@ -1,5 +1,7 @@
 # openai
 
+[![CI](https://github.com/memcastle/memcastle-openai/actions/workflows/ci.yaml/badge.svg?branch=main)](https://github.com/memcastle/memcastle-openai/actions/workflows/ci.yaml) [![Codecov](https://codecov.io/gh/memcastle/memcastle-openai/graph/badge.svg)](https://codecov.io/gh/memcastle/memcastle-openai)
+
 OpenAI Codex and ChatGPT history with Codex integration.
 
 This provider plugin owns the versioned package, while each module has its own lifecycle.
@@ -8,30 +10,32 @@ Sources live in `sources/<id>/` and integrations in `integrations/<id>/`; typed 
 sharing their implementation files or activation state.
 
 ```sh
-memcastle plugin inspect plugin.toml --json
+memcastle plugin inspect --json
 # Build each source for wasm32-wasip2 and each integration with Bun before packaging.
-memcastle plugin package plugin.toml
-memcastle plugin test dist/openai-0.1.0.tar.gz
+memcastle plugin package
+memcastle plugin test dist/ID-VERSION.tar.gz
 ```
 
 The archive in `dist/` is independently releasable from MemCastle Core.
 The root `plugin.toml` is an immutable descriptor of module identities and paths and is not included in the archive.
-Core's `plugin package` regenerates the reviewable `manifest.toml` with metadata, versions and artifact checksums,
-then writes a matching `.sha256sum` next to the archive. Commit the manifest and each source's `Cargo.lock`.
+Core's `plugin package` generates `manifest.toml` **inside the archive only**, with release/module versions and
+artifact checksums, and writes a matching `.sha256sum` beside the archive. Commit each source's `Cargo.lock`.
+An exact `openai/vVERSION` tag gives the release version; untagged commits receive an identifiable
+SemVer development version derived from Git. Use `--version` when packaging without a Git checkout.
 The source module carries the versioned public WIT contract and its own fixtures; the agent integration uses MCP/HTTP.
 No module needs a private Core checkout or a sibling provider to build or test.
 Core's plugin smoke test starts an isolated daemon and checks archive installation and source activation;
 it does not register the integration with an agent.
-Provider `ci.yaml` builds, tests and packages locally, then calls Core's shared artifact-validation workflow for a `[main, versions...]`
-matrix, with additional exact plugin-capable
-stable versions configured in `core-versions` and the `main` prerelease always included.
+Provider `ci.yaml` builds, tests and packages locally, then calls Core's shared artifact-validation workflow for the
+static Core matrix selected by `core_versions` (default `main`). When plugin-capable stable releases exist,
+selecting a minor tree such as `0.5` tests its latest published patch; `main` uses the development prerelease.
 The reusable validation workflow follows Core's `main` branch without a revision pin.
 It runs on every pull request and every push to `main`, including merges, without a second push run on PR branches.
 Every version exercises source fixtures and archive installation/activation; incompatible versions fail the workflow.
 The development release body records the exact Core source SHA, and the workflow summary reports it for each run.
 Core CI separately tests a freshly composed project against its current install contract.
 
-The publish workflow validates the reviewed `openai/v<manifest.toml version>` tag on `main`, rebuilds the
+The publish workflow validates the reviewed `openai/vVERSION` tag on `main`, rebuilds the
 archive and runs the compatibility matrix before uploading to gh-ship's draft release.
 
 Keep IDs stable when moving this project from `plugins/openai/` to its own repository.

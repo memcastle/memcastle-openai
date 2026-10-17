@@ -1,4 +1,4 @@
-name: 📦 Publish openai release
+name: 📦 Publish release
 
 on:
   workflow_dispatch:
@@ -14,6 +14,8 @@ jobs:
   validate:
     name: 🧪 Validate release archive
     uses: ./.github/workflows/ci.yaml
+    with:
+      tag: ${{ inputs.tag }}
 
   publish:
     needs: validate
@@ -29,7 +31,7 @@ jobs:
           ref: ${{ inputs.tag }}
           fetch-depth: 0
           persist-credentials: false
-      - uses: memcastle/memcastle/.github/actions/core-binary@main
+      - uses: memcastle/memcastle@main
         with:
           version: main
       - name: Require reviewed tag on main and existing draft
@@ -38,7 +40,7 @@ jobs:
           TAG: ${{ inputs.tag }}
         run: |
           set -euo pipefail
-          expected="$("$MEMCASTLE_BIN" plugin inspect plugin.toml --json | jq -r '.plugin | "\(.id)/v\(.version)"')"
+          expected="$(memcastle plugin inspect --json | jq -r '.plugin | "\(.id)/v\(.version)"')"
           test "$TAG" = "$expected" || { echo '::error::tag does not match plugin.toml'; exit 1; }
           git fetch origin main
           git merge-base --is-ancestor HEAD origin/main || { echo '::error::tag must be on main'; exit 1; }
@@ -50,9 +52,10 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ inputs.tag }}
-          ARCHIVE: ${{ needs.validate.outputs.archive }}
         run: |
-          test -s "$ARCHIVE"
-          checksum="${ARCHIVE%.tar.gz}.sha256sum"
+          set -euo pipefail
+          archive="dist/${TAG%/v*}-${TAG##*/v}.tar.gz"
+          test -s "$archive"
+          checksum="${archive%.tar.gz}.sha256sum"
           test -s "$checksum"
-          gh release upload "$TAG" "$ARCHIVE" "$checksum" --clobber
+          gh release upload "$TAG" "$archive" "$checksum" --clobber
