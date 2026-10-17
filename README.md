@@ -9,6 +9,7 @@ See [Codex history](docs/codex-source.md), [ChatGPT history](sources/chatgpt/REA
 and [Codex integration](integrations/codex/README.md) for their respective behavior.
 
 Installing the plugin makes its modules available; enable each source and install the Codex integration separately.
+Their separate `sources/codex/` and `integrations/codex/` roots keep their implementation and activation independent.
 
 ```sh
 memcastle plugin inspect plugin.toml --json

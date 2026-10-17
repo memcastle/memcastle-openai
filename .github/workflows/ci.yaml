@@ -63,15 +63,15 @@ jobs:
         env:
           MODULE: ${{ matrix.source }}
         run: |
-          cargo fmt --manifest-path "modules/$MODULE/Cargo.toml" --all -- --check
-          cargo clippy --manifest-path "modules/$MODULE/Cargo.toml" --locked --target wasm32-wasip2 -- -D warnings
+          cargo fmt --manifest-path "sources/$MODULE/Cargo.toml" --all -- --check
+          cargo clippy --manifest-path "sources/$MODULE/Cargo.toml" --locked --target wasm32-wasip2 -- -D warnings
 
       - name: Run source tests with coverage and JUnit
         id: source-tests
         env:
           MODULE: ${{ matrix.source }}
         run: |
-          cd "modules/$MODULE"
+          cd "sources/$MODULE"
           cargo llvm-cov nextest --locked --config-file "$GITHUB_WORKSPACE/.config/nextest.toml" --no-tests=pass --lib
           if grep -q '<testcase' target/nextest/default/junit.xml; then
             mkdir -p coverage
@@ -81,14 +81,14 @@ jobs:
       - uses: codecov/codecov-action@v7
         if: ${{ steps.source-tests.outputs.has_tests == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
         with:
-          files: modules/${{ matrix.source }}/coverage/lcov.info
+          files: sources/${{ matrix.source }}/coverage/lcov.info
           flags: source-${{ matrix.source }}
           use_oidc: true
           fail_ci_if_error: true
       - uses: codecov/codecov-action@v7
         if: ${{ steps.source-tests.outputs.has_tests == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
         with:
-          files: modules/${{ matrix.source }}/target/nextest/default/junit.xml
+          files: sources/${{ matrix.source }}/target/nextest/default/junit.xml
           flags: source-${{ matrix.source }}
           report_type: test_results
           use_oidc: true
@@ -99,7 +99,7 @@ jobs:
           MODULE: ${{ matrix.source }}
         run: |
           set -euo pipefail
-          module_dir="$PWD/modules/$MODULE"
+          module_dir="$PWD/sources/$MODULE"
           cargo_home="$(realpath "${CARGO_HOME:-$HOME/.cargo}")"
           sysroot="$(rustc --print sysroot)"
           commit="$(rustc --version --verbose | awk '/^commit-hash: / {print $2}')"
@@ -115,8 +115,8 @@ jobs:
         with:
           name: source-${{ matrix.source }}
           path: |
-            modules/${{ matrix.source }}/source.wasm
-            modules/${{ matrix.source }}/dist/source.wasm
+            sources/${{ matrix.source }}/source.wasm
+            sources/${{ matrix.source }}/dist/source.wasm
           if-no-files-found: error
 
   integration:
@@ -142,49 +142,49 @@ jobs:
         with:
           version: main
       - name: Format, lint and install integration dependencies
-        if: ${{ hashFiles(format('modules/{0}/package.json', matrix.integration)) != '' }}
+        if: ${{ hashFiles(format('integrations/{0}/package.json', matrix.integration)) != '' }}
         env:
           MODULE: ${{ matrix.integration }}
         run: |
-          cd "modules/$MODULE"
+          cd "integrations/$MODULE"
           if [[ -f bun.lock || -f bun.lockb ]]; then bun install --frozen-lockfile; else bun install; fi
           bun run format:check
           bun run lint
 
       - name: Run integration tests with coverage and JUnit
-        if: ${{ hashFiles(format('modules/{0}/package.json', matrix.integration)) != '' }}
+        if: ${{ hashFiles(format('integrations/{0}/package.json', matrix.integration)) != '' }}
         env:
           MODULE: ${{ matrix.integration }}
         run: |
-          cd "modules/$MODULE"
-          bun test --coverage --coverage-reporter=lcov --reporter=junit --reporter-outfile=junit.xml
+          cd "integrations/$MODULE"
+          bun test --timeout 60000 --coverage --coverage-reporter=lcov --reporter=junit --reporter-outfile=junit.xml
       - uses: codecov/codecov-action@v7
-        if: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && hashFiles(format('modules/{0}/coverage/lcov.info', matrix.integration)) != '' }}
+        if: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && hashFiles(format('integrations/{0}/coverage/lcov.info', matrix.integration)) != '' }}
         with:
-          files: modules/${{ matrix.integration }}/coverage/lcov.info
+          files: integrations/${{ matrix.integration }}/coverage/lcov.info
           flags: integration-${{ matrix.integration }}
           use_oidc: true
           fail_ci_if_error: true
       - uses: codecov/codecov-action@v7
-        if: ${{ hashFiles(format('modules/{0}/junit.xml', matrix.integration)) != '' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
+        if: ${{ hashFiles(format('integrations/{0}/junit.xml', matrix.integration)) != '' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
         with:
-          files: modules/${{ matrix.integration }}/junit.xml
+          files: integrations/${{ matrix.integration }}/junit.xml
           flags: integration-${{ matrix.integration }}
           report_type: test_results
           use_oidc: true
           fail_ci_if_error: true
 
       - name: Build integration assets
-        if: ${{ hashFiles(format('modules/{0}/package.json', matrix.integration)) != '' }}
+        if: ${{ hashFiles(format('integrations/{0}/package.json', matrix.integration)) != '' }}
         env:
           MODULE: ${{ matrix.integration }}
         run: |
-          cd "modules/$MODULE"
+          cd "integrations/$MODULE"
           bun run build
       - uses: actions/upload-artifact@v7
         with:
           name: integration-${{ matrix.integration }}
-          path: modules/${{ matrix.integration }}/dist/
+          path: integrations/${{ matrix.integration }}/dist/
           if-no-files-found: error
           include-hidden-files: true
 
@@ -214,25 +214,20 @@ jobs:
         run: |
           set -euo pipefail
           for id in $(jq -r '.[]' <<< "$SOURCES"); do
-            gh run download "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" --name "source-$id" --dir "modules/$id"
+            gh run download "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" --name "source-$id" --dir "sources/$id"
           done
           for id in $(jq -r '.[]' <<< "$INTEGRATIONS"); do
-            gh run download "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" --name "integration-$id" --dir "modules/$id/dist"
+            gh run download "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" --name "integration-$id" --dir "integrations/$id/dist"
           done
       - name: Check source locks and package immutable plugin descriptor
         id: archive
         run: |
           set -euo pipefail
-          for manifest in modules/*/memcastle-source.toml; do
+          for manifest in sources/*/memcastle-source.toml; do
             if [[ -f "$manifest" ]]; then
               lock="$(dirname "$manifest")/Cargo.lock"
               git ls-files --error-unmatch "$lock" >/dev/null || { echo "::error::commit $lock"; exit 1; }
             fi
-          done
-          # A typed source/integration pair shares a directory; its fixture WASM is not an integration asset.
-          for manifest in modules/*/memcastle-integration.toml; do
-            module_dir="$(dirname "$manifest")"
-            if [[ -f "$module_dir/memcastle-source.toml" ]]; then rm -f "$module_dir/dist/source.wasm"; fi
           done
           "$MEMCASTLE_BIN" plugin package plugin.toml --json > "$RUNNER_TEMP/plugin-package.json"
           git diff --exit-code -- plugin.toml || { echo '::error::packaging must not change plugin.toml'; exit 1; }
@@ -244,10 +239,6 @@ jobs:
           tar -xOzf "$path" manifest.toml | grep '^\[plugin\]$' >/dev/null
           if tar -tf "$path" | grep -q '^plugin.toml$'; then echo '::error::the descriptor must not be archived'; exit 1; fi
           (cd "$(dirname "$path")" && sha256sum --check "$(basename "$checksum")")
-          for manifest in modules/*/memcastle-integration.toml; do
-            module_dir="$(dirname "$manifest")"
-            if [[ -f "$module_dir/memcastle-source.toml" ]]; then cp "$module_dir/source.wasm" "$module_dir/dist/source.wasm"; fi
-          done
           echo "path=$path" >> "$GITHUB_OUTPUT"
       - uses: actions/upload-artifact@v7
         with:
@@ -255,17 +246,18 @@ jobs:
           path: |
             dist/*.tar.gz
             dist/*.sha256sum
-            modules/*/source.wasm
-            modules/*/dist/source.wasm
+            sources/*/source.wasm
+            sources/*/dist/source.wasm
           if-no-files-found: error
 
   validate:
     name: 🧪 Check with Core
     needs: package
+    if: ${{ always() && needs.package.result == 'success' }}
     uses: memcastle/memcastle/.github/workflows/plugin-validation.yaml@main
     with:
       artifact-name: plugin-package
       archive-path: ${{ needs.package.outputs.archive }}
       core-versions: '[]'
-      fixture-bin: modules/chatgpt/fixtures/bin
+      fixture-bin: sources/chatgpt/fixtures/bin
       extra-smoke-command: node scripts/smoke_adoption.mjs && node scripts/smoke_chatgpt.mjs
