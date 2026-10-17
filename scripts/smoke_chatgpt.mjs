@@ -9,7 +9,7 @@ for (const [token, cookie] of [["fixture-session", "fixture-cookie"], ["fixture-
   await isolated("memcastle-chatgpt-web-", ({ env }) => {
     env.MEMCASTLE_CHATGPT_BEARER = token
     if (cookie) env.MEMCASTLE_CHATGPT_COOKIE = cookie
-    env.PATH = `${join(ROOT, "modules/chatgpt/fixtures/bin")}:${process.env.PATH}`
+    env.PATH = `${join(ROOT, "sources/chatgpt/fixtures/bin")}:${process.env.PATH}`
   }, async ({ root, request }) => {
     const preview = await request("/api/plugins/preview", { method: "POST", data: archive })
     const consents = Object.fromEntries(preview.source_consents.map(({ source, digest }) => [source, digest]))
@@ -18,7 +18,7 @@ for (const [token, cookie] of [["fixture-session", "fixture-cookie"], ["fixture-
     await request("/api/source-packages/chatgpt/enable", { method: "POST" })
     const run = (locator, options) => mine(request, "chatgpt", locator, options)
     const exportPath = join(root, "conversations.json")
-    copyFileSync(join(ROOT, "modules/chatgpt/fixtures/export/conversations.json"), exportPath)
+    copyFileSync(join(ROOT, "sources/chatgpt/fixtures/export/conversations.json"), exportPath)
     assert.equal((await run(exportPath)).result.created, 2)
     assert.equal((await run(exportPath)).result.created, 0)
     const alpha = { mode: "web", account: "fixture", projects: "name:Alpha" }

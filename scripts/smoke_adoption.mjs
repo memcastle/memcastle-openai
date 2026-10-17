@@ -7,7 +7,7 @@ import { ROOT, cli, isolated, mine } from "./smoke_common.mjs"
 const plugin = readFileSync(join(ROOT, "dist/openai-0.1.0.tar.gz"))
 
 function fixture(root, name) {
-  const module = join(ROOT, "modules", name)
+  const module = join(ROOT, "sources", name)
   if (name === "codex") {
     const sessions = join(root, "sessions/2026/10/08")
     mkdirSync(sessions, { recursive: true })
@@ -21,7 +21,7 @@ function fixture(root, name) {
 }
 
 for (const name of ["codex", "chatgpt"]) {
-  const module = join(ROOT, "modules", name)
+  const module = join(ROOT, "sources", name)
   cli(["source", "package", module, "--no-build"], process.env)
   const legacy = readFileSync(join(module, "dist", `${name}-0.1.0.tar.gz`))
   for (const bundled of [false, true]) {
