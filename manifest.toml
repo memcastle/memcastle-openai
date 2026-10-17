@@ -1,0 +1,37 @@
+format = 1
+memcastle = ">=0.4, <0.6"
+
+[plugin]
+id = "openai"
+version = "0.1.0"
+provider = "openai"
+description = "OpenAI Codex and ChatGPT history with Codex integration"
+repository = "https://github.com/memcastle/memcastle-openai"
+license = "MIT"
+
+
+[[modules]]
+id = "codex"
+type = "source"
+version = "0.1.0"
+manifest = "modules/codex/memcastle-source.toml"
+entry = "modules/codex/source.wasm"
+contract = "0.4.0"
+
+[[modules]]
+id = "chatgpt"
+type = "source"
+version = "0.1.0"
+manifest = "modules/chatgpt/memcastle-source.toml"
+entry = "modules/chatgpt/source.wasm"
+contract = "0.4.0"
+
+
+[[modules]]
+id = "codex"
+type = "integration"
+version = "0.1.0"
+manifest = "modules/codex/memcastle-integration.toml"
+entry = "modules/codex/dist/.agents/plugins/marketplace.json"
+
+[checksums]

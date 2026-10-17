@@ -39,7 +39,7 @@ def incompatible(archive: bytes) -> bytes:
     with gzip.GzipFile(fileobj=output, mode="wb", filename="", mtime=0) as compressed:
         with tarfile.open(fileobj=compressed, mode="w") as bundle:
             for name, data in entries:
-                if name == "plugin.toml":
+                if name == "manifest.toml":
                     data = data.replace(b'memcastle = ">=0.4, <0.6"', b'memcastle = ">=99"', 1)
                 info = tarfile.TarInfo(name)
                 info.size = len(data)
@@ -49,7 +49,7 @@ def incompatible(archive: bytes) -> bytes:
 
 def main() -> None:
     binary = Path(os.environ["MEMCASTLE_BIN"]).resolve()
-    manifest = tomllib.loads((ROOT / "plugin.toml").read_text())
+    manifest = tomllib.loads((ROOT / "manifest.toml").read_text())
     plugin = manifest["plugin"]["id"]
     archive = (ROOT / "dist" / f"{plugin}-{manifest['plugin']['version']}.tar.gz").read_bytes()
     with tempfile.TemporaryDirectory(prefix="memcastle-plugin-smoke-") as scratch:

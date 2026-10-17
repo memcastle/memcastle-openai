@@ -11,9 +11,10 @@ and [Codex integration](modules/codex/README.md) for their respective behavior.
 Installing the plugin makes its modules available; enable each source and install the Codex integration separately.
 
 ```sh
-python3 scripts/package.py
-python3 scripts/check_modules.py
-python3 -m unittest discover -s tests
+memcastle plugin inspect plugin.toml --json
+# Build both sources for wasm32-wasip2 and run bun run build in modules/codex first.
+memcastle plugin package plugin.toml
+memcastle plugin test dist/openai-0.1.0.tar.gz
 MEMCASTLE_BIN=/path/to/memcastle python3 scripts/smoke_install.py
 MEMCASTLE_BIN=/path/to/memcastle python3 scripts/smoke_adoption.py
 MEMCASTLE_BIN=/path/to/memcastle python3 scripts/smoke_bundled_adoption.py
@@ -24,7 +25,8 @@ PATH="$PWD/modules/chatgpt/fixtures/bin:$PATH" "$MEMCASTLE_BIN" source test modu
 ```
 
 The archive in `dist/` is independently releasable from MemCastle Core.
-The root `plugin.toml` declares stable typed module identities; the package script fills artifact hashes after building.
+The root `plugin.toml` is an immutable descriptor of typed modules; Core generates the reviewable `manifest.toml`
+with release versions and artifact checksums. Commit the regenerated manifest before release.
 Commit each source module's generated `Cargo.lock` before publishing a release.
 Each source carries the versioned public WIT contract and its own fixtures; the Codex integration uses MCP/HTTP.
 No module needs a private Core checkout or a sibling provider to build or test.
@@ -42,9 +44,10 @@ It runs on every pull request and every push to `main`, including merges, withou
 Every version exercises source fixtures and archive installation/activation; incompatible versions fail the workflow.
 The development release body records the exact Core source SHA, and the workflow summary reports it for each run.
 Core CI separately tests a freshly composed project against its current install contract.
-The provider's release workflow accepts only an `openai/v<plugin.toml version>` tag on `main`, then builds
-the reviewed artifact, runs manifest and compatibility-matrix tests, and refuses an existing release.
-Only tag after reviewing the exact packaged hashes and the validation results; the workflow publishes the archive.
+The release workflow validates the reviewed `openai/v<manifest.toml version>` tag on `main`, then builds and
+validates the artifact before attaching it to gh-ship's draft release. gh-ship and git-cliff open a reviewed
+`release/next` PR for releasable commits. Configure `APP_CLIENT_ID` and `APP_PRIVATE_KEY` in the `release`
+environment for an installed GitHub App. Native Cargo/Bun coverage and test results upload to Codecov.
 
 ### Migration from Core
 

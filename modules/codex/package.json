@@ -1,0 +1,11 @@
+{
+  "name": "memcastle-codex-marketplace",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "format:check": "bun scripts/check_format.mjs",
+    "lint": "bun run format:check",
+    "test": "bun test tests",
+    "build": "bun scripts/build.mjs"
+  }
+}

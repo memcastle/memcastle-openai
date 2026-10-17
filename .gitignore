@@ -1,6 +1,8 @@
 dist/
-!modules/*/dist/
-!modules/*/dist/**
+modules/*/dist/
+modules/*/node_modules/
 modules/*/target/
+modules/*/coverage/
 modules/*/source.wasm
 __pycache__/
+ship.release.json

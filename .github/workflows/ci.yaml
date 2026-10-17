@@ -1,0 +1,261 @@
+name: 🧩 openai CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+  workflow_call:
+    outputs:
+      archive:
+        description: Built release archive relative to the repository root
+        value: ${{ jobs.package.outputs.archive }}
+
+permissions:
+  contents: read
+
+jobs:
+  inventory:
+    name: 📋 Discover typed modules
+    runs-on: ubuntu-latest
+    outputs:
+      sources: ${{ steps.modules.outputs.sources }}
+      integrations: ${{ steps.modules.outputs.integrations }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: memcastle/memcastle/.github/actions/core-binary@main
+        with:
+          version: main
+      - name: Inspect plugin manifest
+        id: modules
+        run: |
+          set -euo pipefail
+          "$MEMCASTLE_BIN" plugin inspect plugin.toml --json > "$RUNNER_TEMP/plugin.json"
+          echo "sources=$(jq -c '[.modules[] | select(.type == "source") | .id]' "$RUNNER_TEMP/plugin.json")" >> "$GITHUB_OUTPUT"
+          echo "integrations=$(jq -c '[.modules[] | select(.type == "integration") | .id]' "$RUNNER_TEMP/plugin.json")" >> "$GITHUB_OUTPUT"
+
+  source:
+    name: 🦀 Source ${{ matrix.source }}
+    needs: inventory
+    if: ${{ needs.inventory.outputs.sources != '[]' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+      id-token: write
+
+    strategy:
+      fail-fast: false
+      matrix:
+        source: ${{ fromJSON(needs.inventory.outputs.sources) }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-wasip2
+
+          components: llvm-tools-preview
+      - uses: taiki-e/install-action@cargo-llvm-cov
+      - uses: taiki-e/install-action@nextest
+
+      - uses: Swatinem/rust-cache@v2
+      - name: Check source formatting and warnings
+        env:
+          MODULE: ${{ matrix.source }}
+        run: |
+          cargo fmt --manifest-path "modules/$MODULE/Cargo.toml" --all -- --check
+          cargo clippy --manifest-path "modules/$MODULE/Cargo.toml" --locked --target wasm32-wasip2 -- -D warnings
+
+      - name: Run source tests with coverage and JUnit
+        id: source-tests
+        env:
+          MODULE: ${{ matrix.source }}
+        run: |
+          cd "modules/$MODULE"
+          cargo llvm-cov nextest --locked --config-file "$GITHUB_WORKSPACE/.config/nextest.toml" --no-tests=pass
+          if grep -q '<testcase' target/nextest/default/junit.xml; then
+            mkdir -p coverage
+            cargo llvm-cov report --lcov --output-path coverage/lcov.info
+            echo 'has_tests=true' >> "$GITHUB_OUTPUT"
+          fi
+      - uses: codecov/codecov-action@v7
+        if: ${{ steps.source-tests.outputs.has_tests == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
+        with:
+          files: modules/${{ matrix.source }}/coverage/lcov.info
+          flags: source-${{ matrix.source }}
+          use_oidc: true
+          fail_ci_if_error: true
+      - uses: codecov/codecov-action@v7
+        if: ${{ steps.source-tests.outputs.has_tests == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
+        with:
+          files: modules/${{ matrix.source }}/target/nextest/default/junit.xml
+          flags: source-${{ matrix.source }}
+          report_type: test_results
+          use_oidc: true
+          fail_ci_if_error: true
+
+      - name: Build reproducible source component
+        env:
+          MODULE: ${{ matrix.source }}
+        run: |
+          set -euo pipefail
+          module_dir="$PWD/modules/$MODULE"
+          cargo_home="$(realpath "${CARGO_HOME:-$HOME/.cargo}")"
+          sysroot="$(rustc --print sysroot)"
+          commit="$(rustc --version --verbose | awk '/^commit-hash: / {print $2}')"
+          export CARGO_BUILD_RUSTC_WRAPPER=
+          unset RUSTFLAGS
+          export CARGO_ENCODED_RUSTFLAGS="--remap-path-prefix=$cargo_home=/cargo"$'\x1f'"--remap-path-prefix=$sysroot/lib/rustlib/src/rust=/rustc/$commit"$'\x1f'"--remap-path-prefix=$module_dir=/module"
+          cargo build --manifest-path "$module_dir/Cargo.toml" --locked --release --target wasm32-wasip2
+          crate="$(cargo metadata --no-deps --format-version 1 --manifest-path "$module_dir/Cargo.toml" | jq -er '.packages[0].targets[] | select(.kind | index("cdylib")) | .name')"
+          cp "$module_dir/target/wasm32-wasip2/release/$crate.wasm" "$module_dir/source.wasm"
+          mkdir -p "$module_dir/dist"
+          cp "$module_dir/source.wasm" "$module_dir/dist/source.wasm"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: source-${{ matrix.source }}
+          path: |
+            modules/${{ matrix.source }}/source.wasm
+            modules/${{ matrix.source }}/dist/source.wasm
+          if-no-files-found: error
+
+  integration:
+    name: 🔌 Integration ${{ matrix.integration }}
+    needs: inventory
+    if: ${{ needs.inventory.outputs.integrations != '[]' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+      id-token: write
+
+    strategy:
+      fail-fast: false
+      matrix:
+        integration: ${{ fromJSON(needs.inventory.outputs.integrations) }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: '1.4.2'
+      - uses: memcastle/memcastle/.github/actions/core-binary@main
+        with:
+          version: main
+      - name: Format, lint and install integration dependencies
+        if: ${{ hashFiles(format('modules/{0}/package.json', matrix.integration)) != '' }}
+        env:
+          MODULE: ${{ matrix.integration }}
+        run: |
+          cd "modules/$MODULE"
+          if [[ -f bun.lock || -f bun.lockb ]]; then bun install --frozen-lockfile; else bun install; fi
+          bun run format:check
+          bun run lint
+
+      - name: Run integration tests with coverage and JUnit
+        if: ${{ hashFiles(format('modules/{0}/package.json', matrix.integration)) != '' }}
+        env:
+          MODULE: ${{ matrix.integration }}
+        run: |
+          cd "modules/$MODULE"
+          bun test --coverage --coverage-reporter=lcov --reporter=junit --reporter-outfile=junit.xml
+      - uses: codecov/codecov-action@v7
+        if: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && hashFiles(format('modules/{0}/coverage/lcov.info', matrix.integration)) != '' }}
+        with:
+          files: modules/${{ matrix.integration }}/coverage/lcov.info
+          flags: integration-${{ matrix.integration }}
+          use_oidc: true
+          fail_ci_if_error: true
+      - uses: codecov/codecov-action@v7
+        if: ${{ hashFiles(format('modules/{0}/junit.xml', matrix.integration)) != '' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
+        with:
+          files: modules/${{ matrix.integration }}/junit.xml
+          flags: integration-${{ matrix.integration }}
+          report_type: test_results
+          use_oidc: true
+          fail_ci_if_error: true
+
+      - name: Build integration assets
+        if: ${{ hashFiles(format('modules/{0}/package.json', matrix.integration)) != '' }}
+        env:
+          MODULE: ${{ matrix.integration }}
+        run: |
+          cd "modules/$MODULE"
+          bun run build
+      - uses: actions/upload-artifact@v7
+        with:
+          name: integration-${{ matrix.integration }}
+          path: modules/${{ matrix.integration }}/dist/
+          if-no-files-found: error
+
+  package:
+    name: 🏗️ Package openai
+    needs: [inventory, source, integration]
+    if: >-
+      ${{ always() && needs.inventory.result == 'success'
+        && (needs.source.result == 'success' || needs.source.result == 'skipped')
+        && (needs.integration.result == 'success' || needs.integration.result == 'skipped') }}
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+    outputs:
+      archive: ${{ steps.archive.outputs.path }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: memcastle/memcastle/.github/actions/core-binary@main
+        with:
+          version: main
+      - name: Download built module artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCES: ${{ needs.inventory.outputs.sources }}
+          INTEGRATIONS: ${{ needs.inventory.outputs.integrations }}
+        run: |
+          set -euo pipefail
+          for id in $(jq -r '.[]' <<< "$SOURCES"); do
+            gh run download "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" --name "source-$id" --dir "modules/$id"
+          done
+          for id in $(jq -r '.[]' <<< "$INTEGRATIONS"); do
+            gh run download "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" --name "integration-$id" --dir "modules/$id/dist"
+          done
+      - name: Check source locks and package immutable plugin descriptor
+        id: archive
+        run: |
+          set -euo pipefail
+          for manifest in modules/*/memcastle-source.toml; do
+            if [[ -f "$manifest" ]]; then
+              lock="$(dirname "$manifest")/Cargo.lock"
+              git ls-files --error-unmatch "$lock" >/dev/null || { echo "::error::commit $lock"; exit 1; }
+            fi
+          done
+          "$MEMCASTLE_BIN" plugin package plugin.toml --json > "$RUNNER_TEMP/plugin-package.json"
+          git diff --exit-code -- plugin.toml || { echo '::error::packaging must not change plugin.toml'; exit 1; }
+          git diff --exit-code -- manifest.toml || { echo '::error::commit the regenerated manifest.toml'; exit 1; }
+          path="$(jq -r .archive "$RUNNER_TEMP/plugin-package.json")"
+          checksum="$(jq -r .checksum "$RUNNER_TEMP/plugin-package.json")"
+          test -s "$path"
+          test -s "$checksum"
+          tar -xOzf "$path" manifest.toml | grep '^\[plugin\]$' >/dev/null
+          if tar -tf "$path" | grep -q '^plugin.toml$'; then echo '::error::the descriptor must not be archived'; exit 1; fi
+          (cd "$(dirname "$path")" && sha256sum --check "$(basename "$checksum")")
+          echo "path=$path" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: plugin-package
+          path: |
+            dist/*.tar.gz
+            dist/*.sha256sum
+            modules/*/source.wasm
+            modules/*/dist/source.wasm
+          if-no-files-found: error
+
+  validate:
+    name: 🧪 Check with Core
+    needs: package
+    uses: memcastle/memcastle/.github/workflows/plugin-validation.yaml@main
+    with:
+      artifact-name: plugin-package
+      archive-path: ${{ needs.package.outputs.archive }}
+      core-versions: '[]'
+      fixture-bin: modules/chatgpt/fixtures/bin
+      extra-smoke-command: python3 scripts/smoke_adoption.py && python3 scripts/smoke_bundled_adoption.py && python3 scripts/smoke_chatgpt.py
