@@ -28,11 +28,11 @@ sources = [
 [[composed]]
 from = "sources"
 source = "https://github.com/memcastle/memcastle-source.tpl"
-ref = "5f2a8350bd82c49ec2370d70c83019ff6fc5a822"
+ref = "main"
 commit = "5f2a8350bd82c49ec2370d70c83019ff6fc5a822"
 
 [[composed]]
 from = "integrations"
 source = "https://github.com/memcastle/memcastle-integration.tpl"
-ref = "d055d87eeba173e56ba0c84bc25c8ddeaeeaa0da"
+ref = "main"
 commit = "d055d87eeba173e56ba0c84bc25c8ddeaeeaa0da"
