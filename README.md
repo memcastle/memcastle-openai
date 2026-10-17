@@ -5,21 +5,22 @@ OpenAI Codex and ChatGPT history with Codex integration.
 This independently released plugin owns the `codex` and `chatgpt` history sources and the Codex agent integration.
 The two `codex` modules share a name but have independent source and integration lifecycles.
 The source manifests and integration manifest preserve the IDs and options previously shipped with Core.
-See [Codex history](docs/codex-source.md), [ChatGPT history](modules/chatgpt/README.md),
-and [Codex integration](modules/codex/README.md) for their respective behavior.
+See [Codex history](docs/codex-source.md), [ChatGPT history](sources/chatgpt/README.md),
+and [Codex integration](integrations/codex/README.md) for their respective behavior.
 
 Installing the plugin makes its modules available; enable each source and install the Codex integration separately.
+Their separate `sources/codex/` and `integrations/codex/` roots keep their implementation and activation independent.
 
 ```sh
 memcastle plugin inspect plugin.toml --json
-# Build both sources for wasm32-wasip2 and run bun run build in modules/codex first.
+# Build both sources for wasm32-wasip2 and run bun run build in integrations/codex first.
 memcastle plugin package plugin.toml
 memcastle plugin test dist/openai-0.1.0.tar.gz
 MEMCASTLE_BIN=/path/to/memcastle node scripts/smoke_adoption.mjs
 MEMCASTLE_BIN=/path/to/memcastle node scripts/smoke_chatgpt.mjs
 MEMCASTLE_BIN=/path/to/memcastle
-"$MEMCASTLE_BIN" source test modules/codex --no-build
-PATH="$PWD/modules/chatgpt/fixtures/bin:$PATH" "$MEMCASTLE_BIN" source test modules/chatgpt --no-build
+"$MEMCASTLE_BIN" source test sources/codex --no-build
+PATH="$PWD/sources/chatgpt/fixtures/bin:$PATH" "$MEMCASTLE_BIN" source test sources/chatgpt --no-build
 ```
 
 The archive in `dist/` is independently releasable from MemCastle Core.
