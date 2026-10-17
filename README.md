@@ -4,6 +4,8 @@ OpenAI Codex and ChatGPT history with Codex integration.
 
 This provider plugin owns the versioned package, while each module has its own lifecycle.
 Installing the plugin makes its modules available; enable sources and install integrations separately.
+Sources live in `sources/<id>/` and integrations in `integrations/<id>/`; typed modules may share an ID without
+sharing their implementation files or activation state.
 
 ```sh
 memcastle plugin inspect plugin.toml --json

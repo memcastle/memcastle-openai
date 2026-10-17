@@ -13,15 +13,21 @@ license = "MIT"
 [[modules]]
 id = "codex"
 type = "source"
-manifest = "modules/codex/memcastle-source.toml"
-entry = "modules/codex/source.wasm"
+manifest = "sources/codex/memcastle-source.toml"
+entry = "sources/codex/source.wasm"
 contract = "0.4.0"
 
 [[modules]]
 id = "chatgpt"
 type = "source"
-manifest = "modules/chatgpt/memcastle-source.toml"
-entry = "modules/chatgpt/source.wasm"
+manifest = "sources/chatgpt/memcastle-source.toml"
+entry = "sources/chatgpt/source.wasm"
 contract = "0.4.0"
 
+
+[[modules]]
+id = "codex"
+type = "integration"
+manifest = "integrations/codex/memcastle-integration.toml"
+entry = "integrations/codex/dist/index.js"
 

@@ -1,0 +1,12 @@
+{
+  "name": "memcastle-codex-integration",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "format:check": "bun scripts/check_format.mjs",
+    "lint": "node --check dist/index.js",
+    "test": "bun test",
+    "build": "node --check dist/index.js"
+  }
+}

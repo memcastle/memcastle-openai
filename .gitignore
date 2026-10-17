@@ -1,7 +1,9 @@
 dist/
-!modules/*/dist/
-!modules/*/dist/**
-modules/*/target/
-modules/*/coverage/
-modules/*/source.wasm
+!integrations/*/dist/
+!integrations/*/dist/**
+sources/*/target/
+sources/*/coverage/
+sources/*/source.wasm
+integrations/*/node_modules/
+integrations/*/coverage/
 ship.release.json
