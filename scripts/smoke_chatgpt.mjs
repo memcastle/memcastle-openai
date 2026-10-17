@@ -2,9 +2,9 @@
 import assert from "node:assert/strict"
 import { copyFileSync, readFileSync } from "node:fs"
 import { join } from "node:path"
-import { ROOT, isolated, mine } from "./smoke_common.mjs"
+import { ROOT, isolated, mine, pluginArchive } from "./smoke_common.mjs"
 
-const archive = readFileSync(join(ROOT, "dist/openai-0.1.0.tar.gz"))
+const archive = readFileSync(pluginArchive())
 for (const [token, cookie] of [["fixture-session", "fixture-cookie"], ["fixture-oauth", null]]) {
   await isolated("memcastle-chatgpt-web-", ({ env }) => {
     env.MEMCASTLE_CHATGPT_BEARER = token

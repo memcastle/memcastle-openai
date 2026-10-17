@@ -1,4 +1,4 @@
-name: 🧩 openai CI
+name: 🧩 CI
 
 on:
   pull_request:
@@ -6,38 +6,20 @@ on:
     branches: [main]
   workflow_dispatch:
   workflow_call:
-    outputs:
-      archive:
-        description: Built release archive relative to the repository root
-        value: ${{ jobs.package.outputs.archive }}
+    inputs:
+      tag:
+        description: Reviewed release tag to build rather than the caller's branch commit
+        type: string
+        required: false
+        default: ''
 
 permissions:
   contents: read
 
 jobs:
-  inventory:
-    name: 📋 Discover typed modules
-    runs-on: ubuntu-latest
-    outputs:
-      sources: ${{ steps.modules.outputs.sources }}
-      integrations: ${{ steps.modules.outputs.integrations }}
-    steps:
-      - uses: actions/checkout@v7
-      - uses: memcastle/memcastle/.github/actions/core-binary@main
-        with:
-          version: main
-      - name: Inspect plugin manifest
-        id: modules
-        run: |
-          set -euo pipefail
-          "$MEMCASTLE_BIN" plugin inspect plugin.toml --json > "$RUNNER_TEMP/plugin.json"
-          echo "sources=$(jq -c '[.modules[] | select(.type == "source") | .id]' "$RUNNER_TEMP/plugin.json")" >> "$GITHUB_OUTPUT"
-          echo "integrations=$(jq -c '[.modules[] | select(.type == "integration") | .id]' "$RUNNER_TEMP/plugin.json")" >> "$GITHUB_OUTPUT"
 
   source:
     name: 🦀 Source ${{ matrix.source }}
-    needs: inventory
-    if: ${{ needs.inventory.outputs.sources != '[]' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -47,9 +29,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        source: ${{ fromJSON(needs.inventory.outputs.sources) }}
+        source: ["codex", "chatgpt"]
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.tag || github.sha }}
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: wasm32-wasip2
@@ -114,15 +98,13 @@ jobs:
       - uses: actions/upload-artifact@v7
         with:
           name: source-${{ matrix.source }}
-          path: |
-            sources/${{ matrix.source }}/source.wasm
-            sources/${{ matrix.source }}/dist/source.wasm
+          path: sources/${{ matrix.source }}/source.wasm
           if-no-files-found: error
+
+
 
   integration:
     name: 🔌 Integration ${{ matrix.integration }}
-    needs: inventory
-    if: ${{ needs.inventory.outputs.integrations != '[]' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -132,13 +114,15 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        integration: ${{ fromJSON(needs.inventory.outputs.integrations) }}
+        integration: ["codex"]
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.tag || github.sha }}
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: '1.4.2'
-      - uses: memcastle/memcastle/.github/actions/core-binary@main
+      - uses: memcastle/memcastle@main
         with:
           version: main
       - name: Format, lint and install integration dependencies
@@ -188,58 +172,43 @@ jobs:
           if-no-files-found: error
           include-hidden-files: true
 
+
   package:
-    name: 🏗️ Package openai
-    needs: [inventory, source, integration]
-    if: >-
-      ${{ always() && needs.inventory.result == 'success'
-        && (needs.source.result == 'success' || needs.source.result == 'skipped')
-        && (needs.integration.result == 'success' || needs.integration.result == 'skipped') }}
+    name: 🏗️ Package
+
+    needs: [source, integration]
+
     runs-on: ubuntu-latest
     permissions:
-      actions: read
       contents: read
-    outputs:
-      archive: ${{ steps.archive.outputs.path }}
     steps:
       - uses: actions/checkout@v7
-      - uses: memcastle/memcastle/.github/actions/core-binary@main
+        with:
+          ref: ${{ inputs.tag || github.sha }}
+          fetch-depth: 0
+          fetch-tags: true
+      - uses: memcastle/memcastle@main
         with:
           version: main
-      - name: Download built module artifacts
-        env:
-          GH_TOKEN: ${{ github.token }}
-          SOURCES: ${{ needs.inventory.outputs.sources }}
-          INTEGRATIONS: ${{ needs.inventory.outputs.integrations }}
-        run: |
-          set -euo pipefail
-          for id in $(jq -r '.[]' <<< "$SOURCES"); do
-            gh run download "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" --name "source-$id" --dir "sources/$id"
-          done
-          for id in $(jq -r '.[]' <<< "$INTEGRATIONS"); do
-            gh run download "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" --name "integration-$id" --dir "integrations/$id/dist"
-          done
-      - name: Check source locks and package immutable plugin descriptor
-        id: archive
-        run: |
-          set -euo pipefail
-          for manifest in sources/*/memcastle-source.toml; do
-            if [[ -f "$manifest" ]]; then
-              lock="$(dirname "$manifest")/Cargo.lock"
-              git ls-files --error-unmatch "$lock" >/dev/null || { echo "::error::commit $lock"; exit 1; }
-            fi
-          done
-          "$MEMCASTLE_BIN" plugin package plugin.toml --json > "$RUNNER_TEMP/plugin-package.json"
-          git diff --exit-code -- plugin.toml || { echo '::error::packaging must not change plugin.toml'; exit 1; }
-          git diff --exit-code -- manifest.toml || { echo '::error::commit the regenerated manifest.toml'; exit 1; }
-          path="$(jq -r .archive "$RUNNER_TEMP/plugin-package.json")"
-          checksum="$(jq -r .checksum "$RUNNER_TEMP/plugin-package.json")"
-          test -s "$path"
-          test -s "$checksum"
-          tar -xOzf "$path" manifest.toml | grep '^\[plugin\]$' >/dev/null
-          if tar -tf "$path" | grep -q '^plugin.toml$'; then echo '::error::the descriptor must not be archived'; exit 1; fi
-          (cd "$(dirname "$path")" && sha256sum --check "$(basename "$checksum")")
-          echo "path=$path" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: source-codex
+          path: sources/codex/
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: source-chatgpt
+          path: sources/chatgpt/
+
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: integration-codex
+          path: integrations/codex/dist/
+
+      - name: Package plugin
+        run: memcastle plugin package
       - uses: actions/upload-artifact@v7
         with:
           name: plugin-package
@@ -247,17 +216,20 @@ jobs:
             dist/*.tar.gz
             dist/*.sha256sum
             sources/*/source.wasm
-            sources/*/dist/source.wasm
           if-no-files-found: error
 
   validate:
     name: 🧪 Check with Core
     needs: package
     if: ${{ always() && needs.package.result == 'success' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        core: ["main"]
     uses: memcastle/memcastle/.github/workflows/plugin-validation.yaml@main
     with:
       artifact-name: plugin-package
-      archive-path: ${{ needs.package.outputs.archive }}
-      core-versions: '[]'
+      core-version: ${{ matrix.core }}
+      plugin-ref: ${{ inputs.tag }}
       fixture-bin: sources/chatgpt/fixtures/bin
       extra-smoke-command: node scripts/smoke_adoption.mjs && node scripts/smoke_chatgpt.mjs

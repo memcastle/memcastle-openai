@@ -17,23 +17,22 @@ cargo test --manifest-path sources/codex/Cargo.toml --locked
 cargo test --manifest-path sources/chatgpt/Cargo.toml --locked
 # Build both source components for wasm32-wasip2 and copy them to sources/<id>/source.wasm first.
 (cd integrations/codex && bun install && bun run build && bun test)
-mise run package
-"$MEMCASTLE_BIN" plugin test dist/openai-0.1.0.tar.gz
+archive="$("$MEMCASTLE_BIN" plugin package --json | jq -r .archive)"
+"$MEMCASTLE_BIN" plugin test "$archive"
 "$MEMCASTLE_BIN" source test sources/codex --no-build
 PATH="$PWD/sources/chatgpt/fixtures/bin:$PATH" "$MEMCASTLE_BIN" source test sources/chatgpt --no-build
-node scripts/smoke_adoption.mjs
-node scripts/smoke_chatgpt.mjs
+ARCHIVE="$archive" node scripts/smoke_adoption.mjs
+ARCHIVE="$archive" node scripts/smoke_chatgpt.mjs
 ```
 
-The archive is `dist/openai-<manifest.toml version>.tar.gz`.
-Core updates the reviewed module and artifact hashes in `manifest.toml`; `plugin.toml` is the immutable descriptor.
-Commit both source `Cargo.lock` files, the reviewed manifest, fixtures and code together.
+The archive in `dist/` has an SCM-derived version. Core generates `manifest.toml` with artifact hashes only inside
+that archive; `plugin.toml` is the immutable descriptor. Commit both source `Cargo.lock` files, fixtures and code together.
 Provider CI builds only these two modules, checks their tests and validates the archive against Core's shared workflow.
 That workflow tests Core `main`, reports its exact SHA and accepts additional plugin-capable stable versions;
 Core 0.4.1 predates plugin installation and cannot join the matrix.
 The bundled-upgrade smoke verifies the manual `source remove` step before `--adopt-source`, without a Core-specific
 automatic ownership transfer.
 
-For a release, git-cliff computes the next `manifest.toml` version and gh-ship opens a reviewed `release/next` PR.
+For a release, git-cliff computes the next tag version and gh-ship opens a reviewed `release/next` PR.
 Merging the PR publishes the validated `openai/v<version>` archive and `.sha256sum`.
 The public plugin catalogue lists this repository, but live discovery cannot resolve a version until it has a release.
