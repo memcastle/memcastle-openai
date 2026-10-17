@@ -15,10 +15,8 @@ memcastle plugin inspect plugin.toml --json
 # Build both sources for wasm32-wasip2 and run bun run build in modules/codex first.
 memcastle plugin package plugin.toml
 memcastle plugin test dist/openai-0.1.0.tar.gz
-MEMCASTLE_BIN=/path/to/memcastle python3 scripts/smoke_install.py
-MEMCASTLE_BIN=/path/to/memcastle python3 scripts/smoke_adoption.py
-MEMCASTLE_BIN=/path/to/memcastle python3 scripts/smoke_bundled_adoption.py
-MEMCASTLE_BIN=/path/to/memcastle python3 scripts/smoke_chatgpt.py
+MEMCASTLE_BIN=/path/to/memcastle node scripts/smoke_adoption.mjs
+MEMCASTLE_BIN=/path/to/memcastle node scripts/smoke_chatgpt.mjs
 MEMCASTLE_BIN=/path/to/memcastle
 "$MEMCASTLE_BIN" source test modules/codex --no-build
 PATH="$PWD/modules/chatgpt/fixtures/bin:$PATH" "$MEMCASTLE_BIN" source test modules/chatgpt --no-build

@@ -17,7 +17,7 @@ version = "0.1.0"
 manifest = "modules/codex/memcastle-source.toml"
 manifest_sha256 = "a128c167b7efb80ef96f84aead0553a7213b59a273faac8bd682367771424815"
 entry = "modules/codex/source.wasm"
-sha256 = "fd73e69ce95891e361ea30edc7a0efb4362ff229d8444aced4303ce05d6b5963"
+sha256 = "6905e0c32811d9cceba129ffe37b1d984489aec013c76d7cb099e03a0cfd8d6b"
 optional = false
 contract = "0.4.0"
 
@@ -55,4 +55,4 @@ optional = false
 "modules/codex/skills/memcastle-setup/SKILL.md" = "72ba7e8b7fab9d0be07bf300e9126b24a1f2f21b5bfa5d6c3a8f0cdd83652336"
 "modules/codex/skills/search-before-answer/SKILL.md" = "da5ac92b3aaf307e47698eef4c7fe2f486b28e29729a62d46253a6d9a2807f76"
 "modules/codex/skills/wake-up/SKILL.md" = "977b43dd4d57677320f1aaa6ec6e0eda03febb118fe19203ede5e922582c7770"
-"modules/codex/source.wasm" = "fd73e69ce95891e361ea30edc7a0efb4362ff229d8444aced4303ce05d6b5963"
+"modules/codex/source.wasm" = "6905e0c32811d9cceba129ffe37b1d984489aec013c76d7cb099e03a0cfd8d6b"

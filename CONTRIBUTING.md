@@ -21,10 +21,8 @@ mise run package
 "$MEMCASTLE_BIN" plugin test dist/openai-0.1.0.tar.gz
 "$MEMCASTLE_BIN" source test modules/codex --no-build
 PATH="$PWD/modules/chatgpt/fixtures/bin:$PATH" "$MEMCASTLE_BIN" source test modules/chatgpt --no-build
-python3 scripts/smoke_install.py
-python3 scripts/smoke_adoption.py
-python3 scripts/smoke_bundled_adoption.py
-python3 scripts/smoke_chatgpt.py
+node scripts/smoke_adoption.mjs
+node scripts/smoke_chatgpt.mjs
 ```
 
 The archive is `dist/openai-<manifest.toml version>.tar.gz`.

@@ -94,6 +94,6 @@ Validate it with a fresh user-owned session before relying on unattended mining.
 Build the source for `wasm32-wasip2` with Cargo and use `memcastle plugin package plugin.toml` from the provider root;
 `memcastle source test modules/chatgpt --no-build` runs its export fixture.
 `cargo test --manifest-path modules/chatgpt/Cargo.toml --locked` runs the native export-parser tests, and
-`scripts/smoke_chatgpt.py` exercises the
+`node scripts/smoke_chatgpt.mjs` exercises the
 installed source against a stand-in `curl`, not a real account.
 Keep exports, session credentials and traffic captures private: they contain conversation text and account access.
