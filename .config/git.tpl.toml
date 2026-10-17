@@ -8,6 +8,7 @@ source = "https://github.com/memcastle/memcastle-plugin.tpl"
 
 [answers]
 codecov = true
+core_versions = ["main"]
 description = "OpenAI Codex and ChatGPT history with Codex integration"
 gh_ship = true
 github_owner = "memcastle"
@@ -23,7 +24,6 @@ sources = [
     "codex",
     "chatgpt",
 ]
-version = "0.1.0"
 
 [[composed]]
 from = "sources"
