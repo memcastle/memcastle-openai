@@ -8,7 +8,9 @@ source = "https://github.com/memcastle/memcastle-plugin.tpl"
 
 [answers]
 codecov = true
+codecov_covered_integrations = []
 codecov_covered_sources = ["chatgpt"]
+codecov_integration_target = "80%"
 codecov_patch_target = "14%"
 codecov_project_target = "15%"
 codecov_source_target = "15%"
