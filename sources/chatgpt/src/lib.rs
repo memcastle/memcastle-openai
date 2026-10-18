@@ -454,3 +454,244 @@ impl Guest for ChatGpt {
 }
 
 export!(ChatGpt);
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn fixture() -> String {
+        concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/fixtures/export/conversations.json"
+        )
+        .into()
+    }
+
+    fn source() -> SourceRef {
+        ChatGpt::identify(Some(fixture()), vec![]).unwrap()
+    }
+
+    fn candidate(id: &str) -> Candidate {
+        Candidate {
+            external_id: id.into(),
+            handle: id.into(),
+            cursor_after: "null".into(),
+        }
+    }
+
+    #[test]
+    fn export_is_discovered_read_and_normalized_in_pages() {
+        let source = source();
+        assert_eq!(ChatGpt::default_wing(source.clone()), "chatgpt");
+        assert_eq!(ChatGpt::default_room(), "conversations");
+        let all = ChatGpt::discover(source.clone(), "null".into(), 100).unwrap();
+        assert!(all.exhausted);
+        assert!(all.candidates.len() >= 2);
+        let first = ChatGpt::discover(source.clone(), "null".into(), 1).unwrap();
+        assert!(!first.exhausted);
+        let next = ChatGpt::discover(
+            source.clone(),
+            first.candidates[0].cursor_after.clone(),
+            100,
+        )
+        .unwrap();
+        assert_eq!(
+            first.candidates.len() + next.candidates.len(),
+            all.candidates.len()
+        );
+        assert_eq!(
+            serde_json::from_str::<Value>(&next.candidates.last().unwrap().cursor_after).unwrap()["done"],
+            true
+        );
+        for candidate in all.candidates {
+            let raw = ChatGpt::read(source.clone(), candidate.clone())
+                .unwrap()
+                .unwrap();
+            assert_eq!(raw.revision, revision(&raw.body));
+            assert_eq!(
+                serde_json::from_str::<Value>(&raw.metadata).unwrap()["backend"],
+                "export"
+            );
+            let document = ChatGpt::normalize(raw).unwrap();
+            assert_eq!(
+                document.uri.as_deref(),
+                Some(format!("https://chatgpt.com/c/{}", candidate.external_id).as_str())
+            );
+            assert!(!document.segments.is_empty());
+        }
+        assert!(
+            ChatGpt::read(source, candidate("missing"))
+                .unwrap()
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn bad_locators_options_and_cursors_are_rejected() {
+        assert!(matches!(
+            ChatGpt::identify(None, vec![]),
+            Err(SourceError::InvalidInput(_))
+        ));
+        assert!(matches!(
+            ChatGpt::identify(Some("missing-export".into()), vec![]),
+            Err(SourceError::InvalidInput(_))
+        ));
+        for options in [
+            vec![("mode".into(), "unknown".into())],
+            vec![("account".into(), "me".into())],
+            vec![("projects".into(), "id:one".into())],
+        ] {
+            assert!(matches!(
+                ChatGpt::identify(Some(fixture()), options),
+                Err(SourceError::InvalidInput(_))
+            ));
+        }
+        assert!(matches!(
+            ChatGpt::identify(None, vec![("mode".into(), "web".into())]),
+            Err(SourceError::InvalidInput(_))
+        ));
+        assert!(matches!(
+            ChatGpt::identify(
+                Some(fixture()),
+                vec![
+                    ("mode".into(), "web".into()),
+                    ("account".into(), "me".into())
+                ]
+            ),
+            Err(SourceError::InvalidInput(_))
+        ));
+        for cursor in [
+            "broken",
+            "{}",
+            r#"{"after":"a"}"#,
+            r#"{"after":"","done":false}"#,
+            r#"{"after":"a","done":1}"#,
+        ] {
+            assert!(matches!(
+                ChatGpt::discover(source(), cursor.into(), 1),
+                Err(SourceError::CursorInvalid(_))
+            ));
+        }
+    }
+
+    #[test]
+    fn sweep_restarts_after_deletion_and_rejects_duplicates() {
+        let root = std::env::temp_dir().join(format!("chatgpt-coverage-{}", std::process::id()));
+        std::fs::create_dir_all(&root).unwrap();
+        let file = root.join("conversations.json");
+        std::fs::write(
+            &file,
+            r#"[{"id":"a","messages":[]},{"id":"b","messages":[]}]"#,
+        )
+        .unwrap();
+        let source = ChatGpt::identify(Some(file.display().to_string()), vec![]).unwrap();
+        let complete = ChatGpt::discover(source.clone(), "null".into(), 10).unwrap();
+        assert_eq!(complete.candidates.len(), 2);
+        let repeat = ChatGpt::discover(
+            source.clone(),
+            complete.candidates[1].cursor_after.clone(),
+            10,
+        )
+        .unwrap();
+        assert_eq!(repeat.candidates.len(), 2);
+        std::fs::write(&file, r#"[{"id":"a","messages":[]}]"#).unwrap();
+        let restarted =
+            ChatGpt::discover(source.clone(), r#"{"after":"b","done":false}"#.into(), 10).unwrap();
+        assert_eq!(restarted.candidates[0].external_id, "a");
+        std::fs::write(
+            &file,
+            r#"[{"id":"a","messages":[]},{"id":"a","messages":[]}]"#,
+        )
+        .unwrap();
+        assert!(matches!(
+            ChatGpt::discover(source.clone(), "null".into(), 10),
+            Err(SourceError::Failed(_))
+        ));
+        assert!(matches!(
+            ChatGpt::read(source, candidate("a")),
+            Err(SourceError::Failed(_))
+        ));
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn normalization_filters_nonfinal_messages_and_invalid_records() {
+        let value = json!({"id":"chat","title":"Title","messages":[
+            {"id":"u","role":"user","content":{"parts":[" Hello ",{"text":"World"}]}},
+            {"id":"r","role":"assistant","channel":"analysis","content":{"parts":["private"]}},
+            {"id":"t","role":"tool","content":{"parts":["output"]}},
+            {"id":"a","author":{"role":"assistant","name":"bot"},"metadata":{"model_slug":"model","channel":"final"},"content":{"parts":["Reply"]},"create_time":1767225600}
+        ]});
+        let raw = RawDocument {
+            external_id: "chat".into(),
+            revision: "rev".into(),
+            body: value.to_string(),
+            metadata: "{}".into(),
+            occurred_at: None,
+        };
+        let doc = ChatGpt::normalize(raw.clone()).unwrap();
+        assert_eq!(doc.title.as_deref(), Some("Title"));
+        assert_eq!(doc.segments.len(), 2);
+        assert!(
+            doc.segments[1]
+                .text
+                .contains("name=bot model=model at 2026-01-01T00:00:00Z")
+        );
+        assert!(
+            !doc.segments
+                .iter()
+                .any(|s| s.text.contains("private") || s.text.contains("output"))
+        );
+        assert!(matches!(
+            ChatGpt::normalize(RawDocument {
+                body: "invalid".into(),
+                ..raw.clone()
+            }),
+            Err(SourceError::Failed(_))
+        ));
+        assert!(matches!(
+            ChatGpt::normalize(RawDocument {
+                body: json!({"id":"chat"}).to_string(),
+                ..raw
+            }),
+            Err(SourceError::Failed(_))
+        ));
+        assert_eq!(
+            timestamp(&json!({"create_time":"2026-01-01"})).as_deref(),
+            Some("2026-01-01")
+        );
+        assert!(timestamp(&json!({"create_time":"not-a-number"})).is_some());
+        assert!(timestamp(&json!({"create_time":null})).is_none());
+    }
+
+    #[test]
+    fn rejects_mismatched_ids_and_invalid_web_handles_before_network() {
+        let mut mismatched = candidate("different");
+        mismatched.handle = "conversation-a".into();
+        assert!(matches!(
+            ChatGpt::read(source(), mismatched),
+            Err(SourceError::Failed(_))
+        ));
+        let web = SourceRef {
+            locator: "chatgpt:web".into(),
+            ..source()
+        };
+        for handle in [
+            "oops",
+            r#"{"id":"different"}"#,
+            r#"{"id":"same","project_id":"one"}"#,
+        ] {
+            assert!(matches!(
+                ChatGpt::read(
+                    web.clone(),
+                    Candidate {
+                        external_id: "same".into(),
+                        handle: handle.into(),
+                        cursor_after: "null".into()
+                    }
+                ),
+                Err(SourceError::Failed(_))
+            ));
+        }
+    }
+}

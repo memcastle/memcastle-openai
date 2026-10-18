@@ -45,8 +45,9 @@ The release workflow validates the reviewed `openai/vVERSION` tag on `main`, the
 validates the artifact before attaching it to gh-ship's draft release. gh-ship and git-cliff open a reviewed
 `release/next` PR for releasable commits. Configure `APP_CLIENT_ID` and `APP_PRIVATE_KEY` in the `release`
 environment for an installed GitHub App. Native Cargo/Bun coverage and test results upload to Codecov.
-Codecov uses fixed 15% project and `source-chatgpt` component floors and a 14% patch floor.
-The `source-codex` and `integration-codex` components are informational until they upload nonempty LCOV.
+Codecov uses a fixed 15% project floor, an 80% patch floor, and 80% floors for both source components.
+Source CI also requires strictly greater than 80% native production-line coverage per adapter (excluding inline test modules).
+The `integration-codex` component remains informational.
 
 ### Migration from Core
 

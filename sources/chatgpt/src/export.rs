@@ -174,4 +174,34 @@ mod tests {
         );
         std::fs::remove_dir_all(dir).unwrap();
     }
+
+    #[test]
+    fn invalid_json_duplicate_ids_and_damaged_zip_fail_without_partial_results() {
+        let dir =
+            std::env::temp_dir().join(format!("chatgpt-export-errors-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("conversations.json");
+        assert!(ids(&file).unwrap_err().contains("cannot read"));
+        for body in [
+            "{}",
+            "[] trailing",
+            r#"[{"id":"a","messages":[false]}]"#,
+            r#"[{"id":"a","mapping":{"node":{"parent":1,"message":{}}}}]"#,
+        ] {
+            std::fs::write(&file, body).unwrap();
+            assert!(ids(&file).is_err(), "{body}");
+        }
+        std::fs::write(
+            &file,
+            r#"[{"id":"a","messages":[]},{"id":"a","messages":[]}]"#,
+        )
+        .unwrap();
+        assert_eq!(ids(&file).unwrap().len(), 2);
+        assert!(conversation(&file, "a").unwrap_err().contains("duplicate"));
+        assert!(conversation(&file, "missing").unwrap().is_none());
+        let zip = dir.join("broken.zip");
+        std::fs::write(&zip, b"PK\x03\x04not a zip").unwrap();
+        assert!(ids(&zip).unwrap_err().contains("damaged"));
+        std::fs::remove_dir_all(dir).unwrap();
+    }
 }
