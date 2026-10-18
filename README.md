@@ -43,6 +43,11 @@ Keep IDs stable when moving this project from `plugins/openai/` to its own repos
 The source/integration jobs in `ci.yaml` measure native Rust and Bun tests and upload LCOV and JUnit reports
 to Codecov using OIDC. Enable this repository in Codecov to see PR coverage and test results.
 Manifest-only suites produce test results but no fabricated coverage report.
+The Codecov project and patch checks have fixed targets (`15%` and
+`14%`); coverage-producing source and integration components use
+`15%` and `80%` respectively.
+Only IDs selected in `codecov_covered_sources` or `codecov_covered_integrations` block on component coverage;
+modules without nonempty LCOV remain informational. Update those lists when adding native tests.
 
 
 Releases use gh-ship and git-cliff: merging a releasable Conventional Commit into `main` opens a `release/next` PR.

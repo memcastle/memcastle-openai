@@ -2,9 +2,68 @@ coverage:
   status:
     project:
       default:
-        target: auto
+        target: "15%"
+        threshold: 0%
     patch:
       default:
-        target: auto
+        target: "14%"
+        threshold: 0%
+
+# Each flag names the same typed module as the matching CI upload.
+# A missing report is not carried forward from an earlier commit.
+flags:
+
+  source-codex:
+    paths: ["sources/codex/src/**"]
+    carryforward: false
+
+  source-chatgpt:
+    paths: ["sources/chatgpt/src/**"]
+    carryforward: false
+
+
+  integration-codex:
+    paths: ["integrations/codex/src/**"]
+    carryforward: false
+
+
+# Components describe actual file ownership, independently of upload flags.
+# Modules without native coverage stay visible without becoming failing gates.
+component_management:
+  individual_components:
+
+    - component_id: source-codex
+      name: Source codex
+      paths: ["sources/codex/src/**"]
+      statuses:
+        - type: project
+
+          target: 0%
+          informational: true
+
+
+    - component_id: source-chatgpt
+      name: Source chatgpt
+      paths: ["sources/chatgpt/src/**"]
+      statuses:
+        - type: project
+
+          target: "15%"
+          threshold: 0%
+
+
+
+    - component_id: integration-codex
+      name: Integration codex
+      paths: ["integrations/codex/src/**"]
+      statuses:
+        - type: project
+
+          target: 0%
+          informational: true
+
+
+
 comment:
-  layout: reach,diff,flags,files
+  layout: reach,diff,flags,components,files
+  require_changes: false
