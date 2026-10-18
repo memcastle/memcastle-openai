@@ -2,7 +2,8 @@
 
 The `chatgpt` source mines one document per conversation, without making model calls.
 It accepts an official ChatGPT export ZIP with a top-level `conversations.json`, or a standalone `conversations.json`.
-The `mode=web` option is an **experimental** alternative using ChatGPT's undocumented private web interface.
+Without an export path the source selects the signed-in web account automatically; `mode=web` remains an explicit option.
+This is an **experimental** alternative using ChatGPT's undocumented private web interface.
 It has been tested with synthetic responses, not a fresh live session; its authentication and endpoints may change.
 
 ```sh
@@ -36,7 +37,7 @@ Sign in on the daemon's machine (browser OAuth needs its loopback callback), the
 
 ```sh
 memcastle source auth chatgpt
-memcastle mine chatgpt mode=web account=personal
+memcastle mine chatgpt
 ```
 
 Export ZIP/JSON imports remain usable while signed out.
@@ -52,11 +53,9 @@ An environment bearer takes precedence over OAuth, so remove it to use `source a
 Do not put them in `memcastle mine` options, project files, a shell history entry or a saved HAR.
 The source's process grant runs `curl` with a fixed `https://chatgpt.com` origin, sends headers through standard input, refuses redirects and caps each command's response at 16 MiB.
 Installing the plugin shows the `locator` read grant (for a file, its parent directory), `curl` process grant and the two environment-variable grants for consent.
-Use an account label that is **not** a token and that differs across accounts:
-
-```sh
-memcastle mine chatgpt mode=web account=personal
-```
+There is currently one registered web account, selected automatically, so no internal account label is needed.
+Separate named web accounts are refused until the provider can select them reliably.
+An existing explicit `account=LABEL` keeps its previous cursor identity for compatibility.
 
 An unfiltered web run reads ordinary and project conversations, including archived projects.
 To mine only named projects, use `projects=name:Exact Name`, or `projects=id:PROJECT_ID` for an unambiguous selection.
@@ -76,7 +75,7 @@ Define a persistent miner with the project filter in its saved options:
 
 ```sh
 memcastle miner set chatgpt-project --source chatgpt \
-  --option 'projects=name:Exact Name' --option mode=web --option account=personal
+  --option 'projects=name:Exact Name'
 memcastle miner run chatgpt-project
 ```
 
@@ -96,4 +95,7 @@ Build the source for `wasm32-wasip2` with Cargo and use `memcastle plugin packag
 `cargo test --manifest-path sources/chatgpt/Cargo.toml --locked` runs the native export-parser tests, and
 `node scripts/smoke_chatgpt.mjs` exercises the
 installed source against a stand-in `curl`, not a real account.
+For a focused smoke test without building the plugin's other modules, build/package this source once and set
+`SOURCE_ARCHIVE=sources/chatgpt/dist/chatgpt-0.1.0.tar.gz` when running that script;
+it installs the standalone package in the same disposable daemon.
 Keep exports, session credentials and traffic captures private: they contain conversation text and account access.

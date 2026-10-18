@@ -249,7 +249,7 @@ impl Guest for ChatGpt {
         let mut mode = None;
         let mut projects = None;
         for (key, value) in &options {
-            if key == "mode" && mode.is_none() && value == "web" {
+            if key == "mode" && mode.is_none() && (value == "web" || value == "export") {
                 mode = Some(value.clone());
             } else if key == "account"
                 && account.is_none()
@@ -260,16 +260,27 @@ impl Guest for ChatGpt {
             } else if key == "projects" && projects.is_none() {
                 projects = Some(value.clone());
             } else {
-                return Err(SourceError::InvalidInput("use mode=web account=LABEL projects=id:ID,name:NAME for web, or a file path without options for an export".into()));
+                return Err(SourceError::InvalidInput("use mode=web [projects=id:ID,name:NAME] for the signed-in account, or an export ZIP/JSON path [mode=export]".into()));
             }
         }
-        if mode.is_some() {
-            if account.is_none() {
-                return Err(SourceError::InvalidInput(
-                    "web mining needs a non-secret account=LABEL to separate account histories"
+        // A locator names an offline export, which does not need a web sign-in. In its absence the sole registered
+        // web account is selected automatically; named account selection is not supported by the current auth grant.
+        let web_mode =
+            match (mode.as_deref(), locator.as_deref()) {
+                (Some("web"), Some(_)) => return Err(SourceError::InvalidInput(
+                    "mode=web conflicts with an export path; remove the path or select mode=export"
                         .into(),
-                ));
-            }
+                )),
+                (Some("export"), None) => {
+                    return Err(SourceError::InvalidInput(
+                        "mode=export needs an export ZIP or conversations.json path".into(),
+                    ));
+                }
+                (Some("web"), None) | (None, None) => true,
+                (Some("export"), Some(_)) | (None, Some(_)) => false,
+                _ => unreachable!("the parser accepted only web or export"),
+            };
+        if web_mode {
             if locator.is_some() {
                 return Err(SourceError::InvalidInput(
                     "mode=web does not take an export file path".into(),
@@ -277,7 +288,7 @@ impl Guest for ChatGpt {
             }
             // A web run must establish its authorization before the pipeline creates its source record or cursor.
             web::check_auth().map_err(failed)?;
-            let mut account = account.unwrap_or_default();
+            let mut account = account.unwrap_or_else(|| "default".to_string());
             let mut options = options;
             if let Some(selection) = projects {
                 let available = web::projects().map_err(failed)?;
@@ -306,11 +317,7 @@ impl Guest for ChatGpt {
                 "account=LABEL and projects=… require mode=web; export files cannot be filtered by project".into(),
             ));
         }
-        let locator = locator.ok_or_else(|| {
-            SourceError::InvalidInput(
-                "give an export ZIP or conversations.json path, or mode=web account=LABEL".into(),
-            )
-        })?;
+        let locator = locator.expect("the export branch has a locator");
         // The host canonicalizes a granted locator before opening its parent; WASI cannot resolve ancestors
         // outside that preopen a second time.
         let path = PathBuf::from(&locator);
@@ -319,6 +326,8 @@ impl Guest for ChatGpt {
                 "the export locator must be a file".into(),
             ));
         }
+        // Check before creating a source record or a cursor, so an unrelated ZIP never becomes a successful run.
+        export::ids(&path).map_err(SourceError::InvalidInput)?;
         Ok(SourceRef {
             source: "chatgpt".into(),
             account: None,
@@ -529,10 +538,6 @@ mod tests {
     #[test]
     fn bad_locators_options_and_cursors_are_rejected() {
         assert!(matches!(
-            ChatGpt::identify(None, vec![]),
-            Err(SourceError::InvalidInput(_))
-        ));
-        assert!(matches!(
             ChatGpt::identify(Some("missing-export".into()), vec![]),
             Err(SourceError::InvalidInput(_))
         ));
@@ -547,9 +552,10 @@ mod tests {
             ));
         }
         assert!(matches!(
-            ChatGpt::identify(None, vec![("mode".into(), "web".into())]),
+            ChatGpt::identify(None, vec![("mode".into(), "export".into())]),
             Err(SourceError::InvalidInput(_))
         ));
+        assert!(ChatGpt::identify(Some(fixture()), vec![("mode".into(), "export".into())]).is_ok());
         assert!(matches!(
             ChatGpt::identify(
                 Some(fixture()),

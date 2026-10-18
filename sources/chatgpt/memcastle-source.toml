@@ -13,6 +13,7 @@ incremental = false
 retains_raw = true
 # Export imports are offline; web identify alone requires the source's OAuth sign-in.
 needs_credentials = true
+single_account_auth = true
 
 [permissions]
 # The tested desktop-compatible OAuth grant is declared below; curl receives bearer headers on stdin.
@@ -32,11 +33,11 @@ read = ["locator"]
 
 [options.account]
 type = "string"
-description = "non-secret account label required for web mining; keeps each account's cursor separate"
+description = "legacy non-secret label for a web cursor; omitted selects the single registered default account"
 
 [options.mode]
 type = "string"
-description = "web selects experimental authenticated acquisition instead of an export file"
+description = "web uses the registered account (default without a locator); export reads an export ZIP/JSON path (default with a locator)"
 
 [options.projects]
 type = "string"
