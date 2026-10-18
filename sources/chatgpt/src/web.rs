@@ -4,6 +4,12 @@ use serde_json::{Value, json};
 
 use crate::memcastle::source::host::{access_token, run_process};
 
+#[cfg(test)]
+thread_local! {
+    static MOCK_REQUEST: std::cell::RefCell<Option<Box<dyn Fn(&str) -> Result<Value, String>>>> =
+        std::cell::RefCell::new(None);
+}
+
 const PAGE: usize = 20;
 const MAX_LIST_PAGES: usize = 500;
 const MAX_MESSAGE_PAGES: usize = 500;
@@ -224,6 +230,10 @@ fn encode(value: &str) -> String {
 }
 
 fn request(path: &str) -> Result<Value, String> {
+    #[cfg(test)]
+    if let Some(result) = MOCK_REQUEST.with(|mock| mock.borrow().as_ref().map(|mock| mock(path))) {
+        return result;
+    }
     let bearer = escape(&bearer()?)?;
     if bearer.is_empty() {
         return Err("the ChatGPT bearer session is empty".into());
@@ -457,4 +467,278 @@ pub(super) fn conversation(id: &str) -> Result<Value, String> {
         detail["page_info"] = info.clone();
     }
     Err("ChatGPT history exceeded the message-page limit; refusing a partial transcript".into())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn mocked<T>(
+        handler: impl Fn(&str) -> Result<Value, String> + 'static,
+        run: impl FnOnce() -> T,
+    ) -> T {
+        MOCK_REQUEST.with(|mock| *mock.borrow_mut() = Some(Box::new(handler)));
+        struct Reset;
+        impl Drop for Reset {
+            fn drop(&mut self) {
+                MOCK_REQUEST.with(|mock| *mock.borrow_mut() = None);
+            }
+        }
+        let _reset = Reset;
+        run()
+    }
+
+    fn project(id: &str, name: &str) -> Project {
+        Project {
+            id: id.into(),
+            name: name.into(),
+        }
+    }
+
+    #[test]
+    fn selectors_and_encoding_reject_ambiguous_or_unsafe_values() {
+        let available = [
+            project("one", "Shared"),
+            project("two", "Shared"),
+            project("three", "Other"),
+        ];
+        assert_eq!(
+            select_projects("name:Other,id:one", &available).unwrap(),
+            vec![available[0].clone(), available[2].clone()]
+        );
+        for selection in [
+            "",
+            "id:",
+            "id:../../bad",
+            "id:absent",
+            "name:",
+            "name:Shared",
+            "name:absent",
+            "name:Other,name:Other",
+            "plain",
+        ] {
+            assert!(
+                select_projects(selection, &available).is_err(),
+                "{selection}"
+            );
+        }
+        assert!(valid_id("abc_012-xyz"));
+        assert!(!valid_id(""));
+        assert!(!valid_id(&"a".repeat(129)));
+        assert_eq!(encode("a/b ?"), "a%2Fb%20%3F");
+        assert_eq!(escape("a\\\"b").unwrap(), "a\\\\\\\"b");
+        assert!(escape("line\nbreak").is_err());
+        assert!(escape("bad\0header").is_err());
+        assert_eq!(next_cursor(&json!({})).unwrap(), None);
+        assert_eq!(
+            next_cursor(&json!({"cursor":"next"})).unwrap(),
+            Some("next")
+        );
+        for cursor in [
+            json!({"cursor":""}),
+            json!({"cursor":1}),
+            json!({"cursor":"x".repeat(2049)}),
+        ] {
+            assert!(next_cursor(&cursor).is_err());
+        }
+    }
+
+    #[test]
+    fn project_pages_and_selection_preserve_provenance() {
+        mocked(
+            |path| {
+                if path.contains("sidebar") {
+                    Ok(if path.contains("cursor=") {
+                        json!({"items":[{"gizmo":{"gizmo":{"id":"two","display":{"name":"Beta"}}}}]})
+                    } else {
+                        json!({"items":[{"gizmo":{"gizmo":{"id":"one","display":{"name":"Alpha"}}}}],"cursor":"page 2"})
+                    })
+                } else if path.contains("gizmos/one/") {
+                    Ok(json!({"items":[{"id":"chat-1","gizmo_id":"one"}]}))
+                } else if path.contains("gizmos/two/") {
+                    Ok(json!({"items":[{"id":"chat-2","gizmo_id":"two"}]}))
+                } else {
+                    Ok(json!({"total":0,"items":[]}))
+                }
+            },
+            || {
+                let projects = projects().unwrap();
+                assert_eq!(
+                    projects,
+                    vec![project("one", "Alpha"), project("two", "Beta")]
+                );
+                let listing = list(None).unwrap();
+                assert_eq!(
+                    listing
+                        .iter()
+                        .map(|item| item.id.as_str())
+                        .collect::<Vec<_>>(),
+                    vec!["chat-1", "chat-2"]
+                );
+                assert_eq!(listing[0].project.as_ref(), Some(&projects[0]));
+                assert_eq!(list(Some(&projects[1..])).unwrap()[0].id, "chat-2");
+            },
+        );
+    }
+
+    #[test]
+    fn paging_refuses_inconsistent_project_and_conversation_lists() {
+        mocked(
+            |path| {
+                Ok(
+                    json!({"items":[{"gizmo":{"gizmo":{"id":if path.contains("cursor=") { "two" } else { "one" },"display":{"name":"Alpha"}}}}],"cursor":"repeat"}),
+                )
+            },
+            || {
+                assert!(projects().unwrap_err().contains("cursor"));
+            },
+        );
+        mocked(
+            |_| Ok(json!({"items":[{"id":"chat","gizmo_id":"wrong"}]})),
+            || {
+                assert!(
+                    list(Some(&[project("one", "Alpha")]))
+                        .unwrap_err()
+                        .contains("another project")
+                );
+            },
+        );
+        mocked(
+            |_| Ok(json!({"total":2,"items":[{"id":"same"}]})),
+            || {
+                assert!(list_status(false).unwrap_err().contains("shifted"));
+            },
+        );
+        mocked(
+            |path| {
+                Ok(if path.contains("is_archived=true") {
+                    json!({"total":1,"items":[{"id":"same"}]})
+                } else {
+                    json!({"total":1,"items":[{"id":"same"}]})
+                })
+            },
+            || {
+                assert!(list(None).unwrap_err().contains("archive status"));
+            },
+        );
+        mocked(
+            |_| Ok(json!({"items":[]})),
+            || assert!(projects().unwrap().is_empty()),
+        );
+    }
+
+    #[test]
+    fn message_pages_are_complete_ordered_and_nonoverlapping() {
+        let detail = json!({"title":"Test", "messages":[{"id":"new"}], "page_info":{"has_previous_page":true,"start_cursor":"older"}});
+        mocked(
+            move |path| {
+                Ok(if path.contains("/messages?") {
+                    json!({"messages":[{"id":"old"}],"page_info":{"has_previous_page":false}})
+                } else {
+                    detail.clone()
+                })
+            },
+            || {
+                let value = conversation("chat-1").unwrap();
+                assert_eq!(value["messages"], json!([{"id":"old"},{"id":"new"}]));
+                assert_eq!(value["title"], "Test");
+                assert!(value.get("page_info").is_none());
+            },
+        );
+        assert!(conversation("../unsafe").unwrap_err().contains("invalid"));
+        mocked(
+            |_| {
+                Ok(json!({"messages":[],"page_info":{"has_previous_page":true,"start_cursor":"x"}}))
+            },
+            || {
+                assert!(conversation("chat").unwrap_err().contains("empty page"));
+            },
+        );
+        assert!(
+            assembled(
+                "chat",
+                &json!({}),
+                vec![vec![json!({"id":"same"}), json!({"id":"same"})]]
+            )
+            .unwrap_err()
+            .contains("overlap")
+        );
+        assert!(assembled("chat", &json!({}), vec![vec![json!({})]]).is_err());
+        assert!(assembled("chat", &json!([]), vec![]).is_err());
+    }
+
+    #[test]
+    fn rejects_changed_totals_repeated_projects_and_incomplete_history() {
+        mocked(
+            |path| {
+                Ok(if path.contains("offset=0") {
+                    json!({"total":21,"items": (0..20).map(|i| json!({"id":format!("id-{i}")})).collect::<Vec<_>>()})
+                } else {
+                    json!({"total":22,"items":[{"id":"last"}]})
+                })
+            },
+            || {
+                assert!(list_status(false).unwrap_err().contains("changed"));
+            },
+        );
+        mocked(
+            |path| {
+                Ok(if path.contains("cursor=") {
+                    json!({"items":[{"id":"chat","gizmo_id":"one"}]})
+                } else {
+                    json!({"items":[{"id":"chat","gizmo_id":"one"}],"cursor":"next"})
+                })
+            },
+            || {
+                assert!(
+                    list(Some(&[project("one", "One")]))
+                        .unwrap_err()
+                        .contains("repeated an ID")
+                );
+            },
+        );
+        mocked(
+            |path| {
+                Ok(if path.contains("cursor=") {
+                    json!({"items":[{"gizmo":{"gizmo":{"id":"two","display":{"name":"Other"}}}}],"cursor":"next"})
+                } else {
+                    json!({"items":[{"gizmo":{"gizmo":{"id":"one","display":{"name":"One"}}}}],"cursor":"next"})
+                })
+            },
+            || {
+                assert!(projects().unwrap_err().contains("cursor"));
+            },
+        );
+        mocked(
+            |_| {
+                Ok(
+                    json!({"messages":[{"id":"new"}],"page_info":{"has_previous_page":true,"start_cursor":"same"}}),
+                )
+            },
+            || {
+                assert!(
+                    conversation("chat")
+                        .unwrap_err()
+                        .contains("cursor repeated")
+                );
+            },
+        );
+        mocked(
+            |_| Ok(json!({"messages":[{"id":"new"}]})),
+            || {
+                assert!(conversation("chat").unwrap_err().contains("page_info"));
+            },
+        );
+        mocked(
+            |_| Ok(json!({"messages":[],"page_info":{"has_previous_page":false}})),
+            || {
+                assert!(
+                    conversation("chat").unwrap()["messages"]
+                        .as_array()
+                        .unwrap()
+                        .is_empty()
+                );
+            },
+        );
+    }
 }

@@ -311,3 +311,180 @@ impl Guest for Codex {
 }
 
 export!(Codex);
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn source(root: &Path) -> SourceRef {
+        Codex::identify(Some(root.display().to_string()), vec![]).unwrap()
+    }
+
+    #[test]
+    fn discovers_only_dated_rollouts_and_reads_the_selected_file() {
+        let root = std::env::temp_dir().join(format!("codex-coverage-{}", std::process::id()));
+        let dated = root.join("2026/10/18");
+        std::fs::create_dir_all(&dated).unwrap();
+        std::fs::write(
+            dated.join("rollout-a.jsonl"),
+            "{\"type\":\"message\",\"role\":\"user\",\"content\":\"Hello\"}\n",
+        )
+        .unwrap();
+        std::fs::write(dated.join("rollout-b.jsonl"), "  \n").unwrap();
+        std::fs::write(dated.join("other.jsonl"), "ignored").unwrap();
+        std::fs::create_dir_all(dated.join("deeper")).unwrap();
+        std::fs::write(dated.join("deeper/rollout-c.jsonl"), "ignored").unwrap();
+        let source = source(&root);
+        assert_eq!(Codex::default_wing(source.clone()), "codex");
+        assert_eq!(Codex::default_room(), "sessions");
+        let all = Codex::discover(source.clone(), "null".into(), 10).unwrap();
+        assert_eq!(all.candidates.len(), 2);
+        assert!(all.exhausted);
+        let page = Codex::discover(source.clone(), "null".into(), 1).unwrap();
+        assert_eq!(page.candidates.len(), 1);
+        assert!(!page.exhausted);
+        let next =
+            Codex::discover(source.clone(), page.candidates[0].cursor_after.clone(), 10).unwrap();
+        assert_eq!(next.candidates.len(), 1);
+        assert_ne!(next.candidates[0].handle, page.candidates[0].handle);
+        for candidate in all.candidates {
+            let raw = Codex::read(source.clone(), candidate.clone()).unwrap();
+            if candidate.handle.ends_with("rollout-a.jsonl") {
+                let raw = raw.unwrap();
+                assert_eq!(raw.revision, revision_of(&raw.body));
+                assert_eq!(
+                    Codex::normalize(raw).unwrap().title.as_deref(),
+                    Some("Hello")
+                );
+            } else {
+                assert!(raw.is_none());
+            }
+        }
+        assert!(
+            Codex::read(
+                source.clone(),
+                Candidate {
+                    handle: "2026/10/18/missing.jsonl".into(),
+                    external_id: "missing".into(),
+                    cursor_after: "null".into(),
+                }
+            )
+            .unwrap()
+            .is_none()
+        );
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn rejects_bad_input_and_cursors() {
+        let root = std::env::temp_dir();
+        assert!(matches!(
+            Codex::identify(
+                Some(root.display().to_string()),
+                vec![("unexpected".into(), "x".into())]
+            ),
+            Err(SourceError::InvalidInput(_))
+        ));
+        assert!(matches!(
+            Codex::identify(
+                Some(
+                    root.join("nonexistent-codex-sessions")
+                        .display()
+                        .to_string()
+                ),
+                vec![]
+            ),
+            Err(SourceError::InvalidInput(_))
+        ));
+        let source = source(&root);
+        for cursor in [
+            "oops",
+            "{}",
+            r#"{"mtime_ns":1}"#,
+            r#"{"mtime_ns":1,"key":"../secret"}"#,
+        ] {
+            assert!(
+                matches!(
+                    Codex::discover(source.clone(), cursor.into(), 1),
+                    Err(SourceError::CursorInvalid(_))
+                ),
+                "{cursor}"
+            );
+        }
+        assert!(
+            Codex::discover(
+                SourceRef {
+                    locator: root
+                        .join("nonexistent-codex-sessions")
+                        .display()
+                        .to_string(),
+                    ..source
+                },
+                "null".into(),
+                1
+            )
+            .unwrap()
+            .candidates
+            .is_empty()
+        );
+    }
+
+    fn raw(body: &str, metadata: &str) -> RawDocument {
+        RawDocument {
+            external_id: "2026/10/18/rollout-test.jsonl".into(),
+            revision: "r".into(),
+            body: body.into(),
+            metadata: metadata.into(),
+            occurred_at: None,
+        }
+    }
+
+    #[test]
+    fn normalization_preserves_conversation_not_private_or_tool_output() {
+        let body = [
+            "not json",
+            r#"{"type":"session_meta","payload":{"id":"session-1","cwd":"/work/project"}}"#,
+            r#"{"type":"message","role":"system","content":"secret instructions"}"#,
+            r#"{"type":"message","role":"user","content":[{"type":"input_text","text":"  Prompt  "},{"type":"reasoning","text":"secret reasoning"},{"type":"input_text","text":"Second line"}]}"#,
+            r#"{"type":"function_call","name":"search"}"#,
+            r#"{"payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":" Answer "},{"type":"tool_output","text":"secret result"}]}}"#,
+            r#"{"type":"tool_call"}"#,
+            r#"{"type":"message","role":"assistant","content":"  "}"#,
+            r#"{"type":"reasoning","content":"secret"}"#,
+        ].join("\n");
+        let result = Codex::normalize(raw(&body, r#"{"path":"/work/session.jsonl"}"#)).unwrap();
+        assert_eq!(result.title.as_deref(), Some("Prompt"));
+        assert_eq!(result.room.as_deref(), Some("project"));
+        assert_eq!(result.name.as_deref(), Some("rollout-test"));
+        assert_eq!(result.uri.as_deref(), Some("/work/session.jsonl"));
+        let transcript = result
+            .segments
+            .iter()
+            .map(|s| s.text.as_str())
+            .collect::<String>();
+        assert!(transcript.contains("Prompt\nSecond line"));
+        assert!(transcript.contains("[tool call: search]"));
+        assert!(transcript.contains("[tool call: tool]"));
+        assert!(transcript.contains("### assistant\nAnswer"));
+        assert!(!transcript.contains("secret"));
+    }
+
+    #[test]
+    fn empty_and_metadata_free_transcripts_are_valid() {
+        let empty = Codex::normalize(raw("broken\n{}", "invalid")).unwrap();
+        assert!(empty.segments.is_empty());
+        assert!(empty.title.is_none());
+        assert!(empty.uri.is_none());
+        let message = Codex::normalize(raw(
+            r#"{"type":"message","role":"assistant","content":"Hello"}"#,
+            "{}",
+        ))
+        .unwrap();
+        assert_eq!(message.segments.len(), 2);
+        assert!(
+            message.segments[0]
+                .text
+                .contains("working directory: unknown")
+        );
+    }
+}

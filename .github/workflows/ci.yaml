@@ -51,26 +51,25 @@ jobs:
           cargo clippy --manifest-path "sources/$MODULE/Cargo.toml" --locked --target wasm32-wasip2 -- -D warnings
 
       - name: Run source tests with coverage and JUnit
-        id: source-tests
         env:
           MODULE: ${{ matrix.source }}
         run: |
+          python3 -m unittest discover -s scripts -p 'test_check_source_coverage.py'
           cd "sources/$MODULE"
           cargo llvm-cov nextest --locked --config-file "$GITHUB_WORKSPACE/.config/nextest.toml" --no-tests=pass --lib
-          if grep -q '<testcase' target/nextest/default/junit.xml; then
-            mkdir -p coverage
-            cargo llvm-cov report --lcov --output-path coverage/lcov.info
-            echo 'has_tests=true' >> "$GITHUB_OUTPUT"
-          fi
+          grep -q '<testcase' target/nextest/default/junit.xml
+          mkdir -p coverage
+          cargo llvm-cov report --lcov --output-path coverage/lcov.info
+          python3 "$GITHUB_WORKSPACE/scripts/check_source_coverage.py" "$MODULE" coverage/lcov.info
       - uses: codecov/codecov-action@v7
-        if: ${{ steps.source-tests.outputs.has_tests == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
+        if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
         with:
           files: sources/${{ matrix.source }}/coverage/lcov.info
           flags: source-${{ matrix.source }}
           use_oidc: true
           fail_ci_if_error: true
       - uses: codecov/codecov-action@v7
-        if: ${{ steps.source-tests.outputs.has_tests == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
+        if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
         with:
           files: sources/${{ matrix.source }}/target/nextest/default/junit.xml
           flags: source-${{ matrix.source }}
