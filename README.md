@@ -1,5 +1,7 @@
 # memcastle-openai
 
+[![CI](https://github.com/memcastle/memcastle-openai/actions/workflows/ci.yaml/badge.svg?branch=main)](https://github.com/memcastle/memcastle-openai/actions/workflows/ci.yaml) [![Codecov](https://codecov.io/gh/memcastle/memcastle-openai/graph/badge.svg)](https://codecov.io/gh/memcastle/memcastle-openai)
+
 OpenAI Codex and ChatGPT history with Codex integration.
 
 This independently released plugin owns the `codex` and `chatgpt` history sources and the Codex agent integration.
