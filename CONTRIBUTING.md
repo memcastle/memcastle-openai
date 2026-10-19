@@ -2,15 +2,18 @@
 
 Install Rust with the `wasm32-wasip2` target, Bun and a plugin-capable Core binary.
 The Codex source reads dated JSONL rollouts in `sources/codex/src/lib.rs`.
-ChatGPT's export and experimental web readers live under `sources/chatgpt/src/`.
-The Codex agent marketplace integration lives under `integrations/codex/plugin/`.
+ChatGPT's export and experimental web readers live under `sources/chatgpt/src/`;
+the Codex marketplace integration lives under `integrations/codex/plugin/`.
 
-Keep `openai` as the plugin ID, and preserve `codex` and `chatgpt` source IDs and the `codex` integration ID.
-Changing the source name, account or locator changes cursor and document identity; a ChatGPT project selection resolves to
-project IDs and must retain that behavior for existing persistent miners.
-Review changes to permissions, the OAuth declaration and WIT/Core compatibility against existing installs.
+Keep `openai` as the plugin ID and preserve the `codex` and `chatgpt` source IDs and `codex` integration ID.
+Changing the source name, account or locator changes cursor and document identity. A ChatGPT project selection
+resolves to project IDs and must retain that behavior for existing miners. Review changes to permissions,
+the OAuth declaration and WIT/Core compatibility against existing installations.
 
-Run these checks with `MEMCASTLE_BIN` set to a plugin-capable Core binary:
+## Development checks
+
+Set `MEMCASTLE_BIN` to a plugin-capable Core binary, and build both source components to their
+`sources/<id>/source.wasm` paths before packaging.
 
 ```sh
 cargo test --manifest-path sources/codex/Cargo.toml --locked
@@ -25,14 +28,19 @@ ARCHIVE="$archive" node scripts/smoke_adoption.mjs
 ARCHIVE="$archive" node scripts/smoke_chatgpt.mjs
 ```
 
-The archive in `dist/` has an SCM-derived version. Core generates `manifest.toml` with artifact hashes only inside
-that archive; `plugin.toml` is the immutable descriptor. Commit both source `Cargo.lock` files, fixtures and code together.
-Provider CI builds only these two modules, checks their tests and validates the archive against Core's shared workflow.
-That workflow tests Core `development`, reports its exact SHA and accepts additional plugin-capable stable versions;
-Core 0.4.1 predates plugin installation and cannot join the matrix.
-The bundled-upgrade smoke verifies the manual `source remove` step before `--adopt-source`, without a Core-specific
-automatic ownership transfer.
+The archive has an SCM-derived version and a generated `manifest.toml`; `plugin.toml` remains immutable.
+Commit both source `Cargo.lock` files, fixtures and code together; do not commit generated archives.
+Provider CI tests the modules and validates the archive against Core `development`, reporting its exact SHA.
+Core 0.4.1 predates plugin installation. The bundled-upgrade smoke tests manual source removal before
+`--adopt-source`, without an automatic ownership transfer.
 
-For a release, git-cliff computes the next tag version and gh-ship opens a reviewed `release/next` PR.
-Merging the PR publishes the validated `openai/v<version>` archive and `.sha256sum`.
-The public plugin catalogue lists this repository, but live discovery cannot resolve a version until it has a release.
+## Template updates and releases
+
+Template answers and child revisions live in `.config/git.tpl.toml`. To update, run
+`git tpl update --defaults --json`, review `git tpl diff --json`, then apply with `git tpl merge --json`.
+Preserve module identities and project-specific docs when reconciling a template change.
+Update covered-module answers only for modules whose native tests produce nonempty LCOV.
+
+For a release, git-cliff computes the next tag and gh-ship opens a reviewed `release/next` PR.
+Merging it publishes the validated `openai/v<version>` archive and `.sha256sum`.
+The public plugin catalogue lists this repository, but installation by ID requires a published release.
