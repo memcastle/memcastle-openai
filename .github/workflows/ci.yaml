@@ -123,7 +123,7 @@ jobs:
           bun-version: '1.4.2'
       - uses: memcastle/memcastle@main
         with:
-          version: main
+          version: development
       - name: Format, lint and install integration dependencies
         if: ${{ hashFiles(format('integrations/{0}/package.json', matrix.integration)) != '' }}
         env:
@@ -188,7 +188,7 @@ jobs:
           fetch-tags: true
       - uses: memcastle/memcastle@main
         with:
-          version: main
+          version: development
 
       - uses: actions/download-artifact@v8
         with:
@@ -224,7 +224,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        core: ["main"]
+        core: ["development"]
     uses: memcastle/memcastle/.github/workflows/plugin-validation.yaml@main
     with:
       artifact-name: plugin-package
