@@ -1,60 +1,122 @@
 # openai
 
-[![CI](https://github.com/memcastle/memcastle-openai/actions/workflows/ci.yaml/badge.svg?branch=main)](https://github.com/memcastle/memcastle-openai/actions/workflows/ci.yaml) [![Codecov](https://codecov.io/gh/memcastle/memcastle-openai/graph/badge.svg)](https://codecov.io/gh/memcastle/memcastle-openai)
+[![CI][ci-badge]][ci-workflow] [![Codecov][codecov-badge]][codecov-project]
 
-OpenAI Codex and ChatGPT history with Codex integration.
+[ci-badge]: https://github.com/memcastle/memcastle-openai/actions/workflows/ci.yaml/badge.svg?branch=main
+[ci-workflow]: https://github.com/memcastle/memcastle-openai/actions/workflows/ci.yaml
+[codecov-badge]: https://codecov.io/gh/memcastle/memcastle-openai/graph/badge.svg
+[codecov-project]: https://codecov.io/gh/memcastle/memcastle-openai
 
-This provider plugin owns the versioned package, while each module has its own lifecycle.
-Installing the plugin makes its modules available; enable sources and install integrations separately.
-Sources live in `sources/<id>/` and integrations in `integrations/<id>/`; typed modules may share an ID without
-sharing their implementation files or activation state.
+OpenAI Codex and ChatGPT history with Codex integration
+
+This is a versioned MemCastle provider plugin.
+It includes source modules and agent integrations.
+
+## Install
+
+If this plugin has a published release in the
+[MemCastle plugin catalogue](https://memcastle.github.io/plugins.json),
+install it by ID with a plugin-capable MemCastle Core binary:
+
+```sh
+memcastle plugin install openai
+```
+
+Core retrieves and checks the release archive for you.
+
+If the catalogue entry has no published release yet, build and package the project first (below).
+
+After installation, explicitly enable the sources you want to use.
+
+Register integrations with your agent separately; installing the archive alone does not configure an agent.
+
+## Build and test locally
+
+You'll need a plugin-capable MemCastle Core binary and Git.
+
+Install Rust with the `wasm32-wasip2` target for source modules.
+Install Bun for agent integrations.
+
+For each source, run its tests, build the Wasm component and copy the compiled component
+to `sources/<id>/source.wasm`.
+See the module's README and the CI workflow for its crate-specific artifact name:
+
+```sh
+cargo generate-lockfile --manifest-path sources/<id>/Cargo.toml
+cargo test --manifest-path sources/<id>/Cargo.toml --locked --lib
+cargo build --manifest-path sources/<id>/Cargo.toml --locked --release --target wasm32-wasip2
+```
+
+For each integration with a `package.json`,
+install dependencies, test and build in its directory:
+
+```sh
+cd integrations/<id>
+bun install
+bun test --timeout 60000
+bun run build
+cd ../..
+```
+
+From the project root, package and smoke-test the result:
 
 ```sh
 memcastle plugin inspect --json
-# Build each source for wasm32-wasip2 and each integration with Bun before packaging.
 memcastle plugin package
-memcastle plugin test dist/ID-VERSION.tar.gz
+memcastle plugin test dist/openai-VERSION.tar.gz
 ```
 
-The archive in `dist/` is independently releasable from MemCastle Core.
-The root `plugin.toml` is an immutable descriptor of module identities and paths and is not included in the archive.
-Core's `plugin package` generates `manifest.toml` **inside the archive only**, with release/module versions and
-artifact checksums, and writes a matching `.sha256sum` beside the archive. Commit each source's `Cargo.lock`.
-An exact `openai/vVERSION` tag gives the release version; untagged commits receive an identifiable
-SemVer development version derived from Git. Use `--version` when packaging without a Git checkout.
-The source module carries the versioned public WIT contract and its own fixtures; the agent integration uses MCP/HTTP.
-No module needs a private Core checkout or a sibling provider to build or test.
-Core's plugin smoke test starts an isolated daemon and checks archive installation and source activation;
-it does not register the integration with an agent.
-Provider `ci.yaml` builds, tests and packages locally, then calls Core's shared artifact-validation workflow for the
-static Core matrix selected by `core_versions` (default `development`). When plugin-capable stable releases exist,
-selecting a minor tree such as `0.5` tests its latest published patch; `development` uses the moving prerelease.
-The reusable validation workflow follows Core's `main` branch without a revision pin.
-It runs on every pull request and every push to `main`, including merges, without a second push run on PR branches.
-Every version exercises source fixtures and archive installation/activation; incompatible versions fail the workflow.
-The development release body records the exact Core source SHA, and the workflow summary reports it for each run.
-Core CI separately tests a freshly composed project against its current install contract.
+Replace `VERSION` with the version printed by `memcastle plugin package`
+or the name of the archive in `dist/`.
 
-The publish workflow validates the reviewed `openai/vVERSION` tag on `main`, rebuilds the
-archive and runs the compatibility matrix before uploading to gh-ship's draft release.
+The package command reads `plugin.toml` and creates an archive with its own versioned `manifest.toml`
+plus a matching `.sha256sum` file.
+It does not rewrite `plugin.toml` or create a root-level `manifest.toml`.
 
-Keep IDs stable when moving this project from `plugins/openai/` to its own repository.
+A `openai/vVERSION` tag supplies a release version;
+untagged Git commits get a development version.
+Outside a Git checkout, pass `--version` when packaging.
 
-The source/integration jobs in `ci.yaml` measure native Rust and Bun tests and upload LCOV and JUnit reports
-to Codecov using OIDC. Enable this repository in Codecov to see PR coverage and test results.
-Manifest-only suites produce test results but no fabricated coverage report.
-The Codecov project and patch checks have fixed targets (`15%` and
-`80%`); coverage-producing source and integration components use
-`80%` and `80%` respectively.
-Only IDs selected in `codecov_covered_sources` or `codecov_covered_integrations` block on component coverage;
-modules without nonempty LCOV remain informational. Update those lists when adding native tests.
+## Project layout
 
+| Path | Purpose |
+| --- | --- |
+| `plugin.toml` | Plugin identity, supported Core versions and module entries. |
+| `sources/<id>/` | Rust/Wasm source modules, each with its own manifest and tests. |
+| `integrations/<id>/` | Agent integrations and their own assets or builds. |
+| `dist/` | Generated release archive and checksum after packaging. |
 
-Releases use gh-ship and git-cliff: merging a releasable Conventional Commit into `main` opens a `release/next` PR.
-Merging that PR publishes a validated `openai/vVERSION` archive as a GitHub Release.
-Set up the `release` environment with variable `APP_CLIENT_ID` and secret `APP_PRIVATE_KEY`
-for an App installed on this repository.
-Grant contents, actions and pull requests write permission; issues write is needed to create the release label.
-Set squash merge title to PR title and body to blank, and enable this repository's release environment.
-The `prepare-release` workflow honors its `dry_run` input without pushing or committing.
+Source and integration IDs may match:
+their paths, artifacts and activation remain separate.
 
+## CI and releases
+
+CI builds the modules that exist, packages the plugin and validates its archive against MemCastle Core.
+
+The `core_versions` answer defaults to `development`, the currently available compatibility choice.
+Validation runs on pull requests and pushes to `main`.
+
+When modules have native tests, their jobs upload available LCOV and JUnit results to Codecov using OIDC.
+Enable this repository in Codecov to see coverage and test-result statuses.
+
+Project and patch targets are `15%` and `80%`;
+reporting sources and integrations use `80%` and `80%`.
+Only modules listed in `codecov_covered_sources` or `codecov_covered_integrations`
+have blocking component coverage checks.
+
+Releases use gh-ship and git-cliff:
+merging a releasable Conventional Commit into `main` opens a `release/next` PR.
+Merging the release PR publishes a validated `openai/vVERSION` archive as a GitHub Release.
+
+Configure the `release` environment with variable `APP_CLIENT_ID`
+and secret `APP_PRIVATE_KEY` for an App installed on this repository.
+Grant contents, actions and pull requests write permission;
+issues write is needed to create the release label.
+
+Set squash-merge title to the PR title and body to blank, and enable the release environment.
+The `prepare-release` workflow's `dry_run` input avoids pushing or committing.
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for local development and release guidance.
+Coding agents should also read [AGENTS.md](AGENTS.md).
