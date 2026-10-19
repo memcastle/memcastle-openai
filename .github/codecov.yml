@@ -6,7 +6,7 @@ coverage:
         threshold: 0%
     patch:
       default:
-        target: "14%"
+        target: "80%"
         threshold: 0%
 
 # Each flag names the same typed module as the matching CI upload.
@@ -38,8 +38,8 @@ component_management:
       statuses:
         - type: project
 
-          target: 0%
-          informational: true
+          target: "80%"
+          threshold: 0%
 
 
     - component_id: source-chatgpt
@@ -48,7 +48,7 @@ component_management:
       statuses:
         - type: project
 
-          target: "15%"
+          target: "80%"
           threshold: 0%
 
 
