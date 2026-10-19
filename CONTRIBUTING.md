@@ -28,7 +28,7 @@ ARCHIVE="$archive" node scripts/smoke_chatgpt.mjs
 The archive in `dist/` has an SCM-derived version. Core generates `manifest.toml` with artifact hashes only inside
 that archive; `plugin.toml` is the immutable descriptor. Commit both source `Cargo.lock` files, fixtures and code together.
 Provider CI builds only these two modules, checks their tests and validates the archive against Core's shared workflow.
-That workflow tests Core `main`, reports its exact SHA and accepts additional plugin-capable stable versions;
+That workflow tests Core `development`, reports its exact SHA and accepts additional plugin-capable stable versions;
 Core 0.4.1 predates plugin installation and cannot join the matrix.
 The bundled-upgrade smoke verifies the manual `source remove` step before `--adopt-source`, without a Core-specific
 automatic ownership transfer.
