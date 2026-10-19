@@ -26,6 +26,7 @@ integrations = ["codex"]
 memcastle = ">=0.4, <0.6"
 plugin_id = "openai"
 provider = "openai"
+registry = true
 repository_name = "memcastle-openai"
 ship_token = "app"
 source_template = "https://github.com/memcastle/memcastle-source.tpl"
