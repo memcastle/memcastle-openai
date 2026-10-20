@@ -1,5 +1,5 @@
 format = 1
-memcastle = ">=0.4, <0.6"
+memcastle = ">=0.5, <0.6"
 # Add shared support files or directories here; integration manifests supply their own assets.
 artifacts = []
 
@@ -32,4 +32,5 @@ id = "codex"
 type = "integration"
 manifest = "integrations/codex/memcastle-integration.toml"
 entry = "integrations/codex/dist/index.js"
+
 

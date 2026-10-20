@@ -173,6 +173,7 @@ jobs:
           include-hidden-files: true
 
 
+
   package:
     name: 🏗️ Package
 
@@ -207,6 +208,7 @@ jobs:
           name: integration-codex
           path: integrations/codex/dist/
 
+
       - name: Package plugin
         run: memcastle plugin package
       - uses: actions/upload-artifact@v7
@@ -225,7 +227,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        core: ["development"]
+        core: ["development", "0.5"]
     uses: memcastle/memcastle/.github/workflows/plugin-validation.yaml@main
     with:
       artifact-name: plugin-package
