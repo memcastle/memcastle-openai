@@ -17,13 +17,18 @@ codecov_integration_target = "80%"
 codecov_patch_target = "80%"
 codecov_project_target = "15%"
 codecov_source_target = "80%"
-core_versions = ["development"]
+core_versions = [
+    "development",
+    "0.5",
+]
 description = "OpenAI Codex and ChatGPT history with Codex integration"
+embedding_template = "https://github.com/memcastle/memcastle-embedding-provider.tpl"
+embeddings = []
 gh_ship = true
 github_owner = "memcastle"
 integration_template = "https://github.com/memcastle/memcastle-integration.tpl"
 integrations = ["codex"]
-memcastle = ">=0.4, <0.6"
+memcastle = ">=0.5, <0.6"
 plugin_id = "openai"
 provider = "openai"
 registry = true
@@ -39,10 +44,10 @@ sources = [
 from = "sources"
 source = "https://github.com/memcastle/memcastle-source.tpl"
 ref = "main"
-commit = "5f2a8350bd82c49ec2370d70c83019ff6fc5a822"
+commit = "e298a33bde43c3cbe5a9a69d4af23b5e8103b6ff"
 
 [[composed]]
 from = "integrations"
 source = "https://github.com/memcastle/memcastle-integration.tpl"
 ref = "main"
-commit = "d055d87eeba173e56ba0c84bc25c8ddeaeeaa0da"
+commit = "b25875c2c8dba739d70833f5f1db85d25969a4fa"

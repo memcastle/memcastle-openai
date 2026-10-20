@@ -69,8 +69,8 @@ without network access.
 
 ## CI and releases
 
-Provider CI builds and packages locally, then calls Core's shared validation for the selected `development`
-release. The Core setup action verifies its binary against `SHA256SUMS` and reports its source SHA.
+Provider CI builds and packages locally, then calls Core's shared validation for `development` and the latest
+stable `0.5` patch. The Core setup action verifies its binary against `SHA256SUMS` and reports its source SHA.
 Validation runs on pull requests and pushes to `main`, checking source fixtures, installation and activation.
 The `openai/vVERSION` release tag is validated before attaching the archive to gh-ship's draft release.
 
