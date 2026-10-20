@@ -30,7 +30,7 @@ ARCHIVE="$archive" node scripts/smoke_chatgpt.mjs
 
 The archive has an SCM-derived version and a generated `manifest.toml`; `plugin.toml` remains immutable.
 Commit both source `Cargo.lock` files, fixtures and code together; do not commit generated archives.
-Provider CI tests the modules and validates the archive against Core `development`, reporting its exact SHA.
+Provider CI tests the modules and validates the archive against Core `development` and `0.5`, reporting their exact SHAs.
 Core 0.4.1 predates plugin installation. The bundled-upgrade smoke tests manual source removal before
 `--adopt-source`, without an automatic ownership transfer.
 

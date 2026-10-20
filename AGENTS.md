@@ -9,6 +9,7 @@
   Commit `Cargo.lock` and build `source.wasm` before packaging.
 - Agent integration implementations live under `integrations/<id>/`.
   Run tests and build scripts when `package.json` exists.
+- This render has no embedding providers.
 - Check affected modules, then run `memcastle plugin package` and `memcastle plugin test`
   on the resulting archive. Use a plugin-capable Core binary.
   Keep the coverage-reporting module lists in template answers
