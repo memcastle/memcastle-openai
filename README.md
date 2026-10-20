@@ -79,6 +79,7 @@ git-cliff and gh-ship open a reviewed `release/next` PR for releasable commits. 
 results upload to Codecov: fixed 15% project, 80% patch and 80% reporting-source component floors. Source CI
 also requires strictly greater than 80% native production-line coverage per adapter (excluding inline tests).
 The `integration-codex` component remains informational.
+The publish workflow uses the configured App credential to check the draft release and upload its validated archive.
 
 ## Contributing
 
