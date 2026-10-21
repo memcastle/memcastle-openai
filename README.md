@@ -72,7 +72,7 @@ without network access.
 Provider CI builds and packages locally, then calls Core's shared validation for `development` and the latest
 stable `0.5` patch. The Core setup action verifies its binary against `SHA256SUMS` and reports its source SHA.
 Validation runs on pull requests and pushes to `main`, checking source fixtures, installation and activation.
-The `openai/vVERSION` release tag is validated before attaching the archive to gh-ship's draft release.
+The `VERSION` release tag is validated before attaching the archive to gh-ship's draft release.
 
 git-cliff and gh-ship open a reviewed `release/next` PR for releasable commits. Configure `APP_CLIENT_ID` and
 `APP_PRIVATE_KEY` in the `release` environment for an installed GitHub App. Native Cargo/Bun coverage and test

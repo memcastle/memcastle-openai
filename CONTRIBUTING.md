@@ -42,5 +42,6 @@ Preserve module identities and project-specific docs when reconciling a template
 Update covered-module answers only for modules whose native tests produce nonempty LCOV.
 
 For a release, git-cliff computes the next tag and gh-ship opens a reviewed `release/next` PR.
-Merging it publishes the validated `openai/v<version>` archive and `.sha256sum`.
+Merging it publishes the validated `openai-<version>.tar.gz` archive and `.sha256sum`
+under the `<version>` tag.
 The public plugin catalogue lists this repository, but installation by ID requires a published release.
