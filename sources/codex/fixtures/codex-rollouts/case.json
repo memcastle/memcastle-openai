@@ -2,7 +2,7 @@
   "name": "codex-rollouts",
   "description": "Codex rollout transcripts in the dated layout, including reasoning and tool output that must not be filed.",
   "locator": "tree",
-  "limit": 10,
+  "limit": 1,
   "documents": [
     {
       "external_id": "2026/10/08/rollout-2026-10-08T10-00-00-session-a.jsonl",
@@ -17,6 +17,14 @@
         "[tool call: read_file]\n\n",
         "### assistant\nThe parser is ready.\n\n"
       ]
+    },
+    {
+      "external_id": "2026/10/08/rollout-2026-10-08T11-00-00-session-b.jsonl",
+      "title": "Second session.",
+      "kind": "transcript",
+      "tags": ["transcript", "codex"],
+      "room": "other",
+      "segments": ["# Codex session session-b\nworking directory: /work/other\n\n", "### user\nSecond session.\n\n"]
     }
   ],
   "skipped": ["2026/10/08/history.jsonl", "2026/10/rollout-wrong-depth.jsonl"]

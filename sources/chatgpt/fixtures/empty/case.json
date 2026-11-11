@@ -1,0 +1,7 @@
+{
+  "name": "empty export checkpoints",
+  "description": "An additive empty snapshot completes without synthetic documents.",
+  "locator": "conversations.json",
+  "limit": 1,
+  "documents": []
+}

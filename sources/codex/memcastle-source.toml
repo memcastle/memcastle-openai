@@ -6,6 +6,7 @@ description = "Codex coding-agent rollout history (JSONL files under ~/.codex/se
 
 [compatibility]
 contract = "0.4.0"
+reconciliation = "0.1.0"
 memcastle = ">=0.5, <0.6"
 
 [capabilities]
@@ -21,6 +22,10 @@ read = ["locator", "~/.codex/sessions"]
 
 [triggers.watch]
 description = "a Codex rollout file is created or changed under the session directory"
+
+[options.project]
+type = "path"
+description = "include sessions whose recorded working directory is this directory or a descendant"
 
 [build]
 command = ["cargo", "build", "--release", "--target", "wasm32-wasip2", "--target-dir", "target"]

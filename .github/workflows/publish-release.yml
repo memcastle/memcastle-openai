@@ -43,9 +43,15 @@ jobs:
           ref: ${{ inputs.tag }}
           fetch-depth: 0
           persist-credentials: false
-      - uses: memcastle/memcastle@main
+      - uses: memcastle/memcastle@c311d09d839afea2e652e8f31e088ebc9792a0f5
+        id: core
         with:
           version: development
+      - name: Require reconciliation-capable Core provenance
+        env:
+          CORE_SHA: ${{ steps.core.outputs.core_sha }}
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/check_core_reconciliation.mjs
       - name: Require reviewed tag on main and existing draft
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}

@@ -1,0 +1,8 @@
+{
+  "name": "empty authenticated project",
+  "description": "A selected empty project checkpoints without a fake conversation.",
+  "opaque_locator": "chatgpt:web",
+  "options": {"projects": "id:g-p-empty"},
+  "limit": 1,
+  "documents": []
+}

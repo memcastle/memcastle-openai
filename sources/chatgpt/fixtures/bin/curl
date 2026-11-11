@@ -2,6 +2,7 @@
 """Offline stand-in for the explicitly granted curl program; no account or network needed."""
 import json
 import sys
+from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
 config = sys.stdin.read()
@@ -14,6 +15,12 @@ assert "User-Agent: Mozilla/5.0" in config
 assert "https://chatgpt.com/backend-api/" in config
 url = urlsplit(config.split('url = "', 1)[1].split('"', 1)[0])
 params = parse_qs(url.query)
+# Mutable scenario state lives beside the disposable palace, outside provider credentials.
+state_path = Path.home() / "web-fixture-state.json"
+state = json.loads(state_path.read_text()) if state_path.exists() else {}
+if state.get("status"):
+    sys.stdout.write('{}\nMEMCASTLE_HTTP_STATUS:' + str(state["status"]))
+    raise SystemExit(0)
 
 if "Bearer expired-session" in config:
     sys.stdout.write('{}\nMEMCASTLE_HTTP_STATUS:401')
@@ -23,11 +30,13 @@ if "Bearer throttled-session" in config:
     raise SystemExit(0)
 
 if url.path.endswith("/messages"):
-    response = {"messages": [] if "Bearer partial-session" in config else
+    response = {"messages": [] if "Bearer partial-session" in config or state.get("partial_messages") else
                 [{"id": "old", "author": {"role": "user"}, "content": {"parts": ["Before"]}}],
                 "page_info": {"has_previous_page": False, "start_cursor": "previous"}}
 elif url.path == "/backend-api/gizmos/snorlax/sidebar":
     names = ["Shared", "Shared", "Empty"] if "Bearer duplicate-name-session" in config else ["Alpha", "Beta", "Empty"]
+    if state.get("alpha_name"):
+        names[0] = state["alpha_name"]
     position = {"next-projects": 1, "next-empty": 2}.get(params.get("cursor", [""])[0], 0)
     response = {"items": [{"gizmo": {"gizmo": {"id": ["g-p-alpha", "g-p-beta", "g-p-empty"][position],
                                                   "display": {"name": names[position]},
@@ -44,11 +53,16 @@ elif url.path.startswith("/backend-api/gizmos/g-p-") and url.path.endswith("/con
                 "cursor": "next-alpha" if project == "g-p-alpha" and position == 1 else None}
     if "Bearer repeated-project-cursor" in config and project == "g-p-alpha":
         response["cursor"] = "next-alpha"
+    if state.get("move_alpha_to_beta"):
+        if project == "g-p-alpha":
+            response = {"items": [], "cursor": None}
+        elif project == "g-p-beta":
+            response["items"].extend({"id": f"project-alpha-chat-{i}", "gizmo_id": project} for i in (1, 2))
 elif url.path.startswith("/backend-api/conversations/"):
     conversation_id = url.path.split("/")[3]
     response = {"conversation_id": conversation_id, "title": "Web conversation", "create_time": 1767225600,
-                "gizmo_id": None, "owner": None,
-                "messages": [{"id": "new", "author": {"role": "assistant"}, "content": {"parts": ["After"]}}],
+                "gizmo_id": ("g-p-beta" if state.get("move_alpha_to_beta") else "g-p-alpha") if conversation_id.startswith("project-alpha-") else "g-p-beta" if conversation_id.startswith("project-beta-") else None, "owner": None,
+                "messages": [{"id": "new", "author": {"role": "assistant"}, "content": {"parts": [state.get("text", "After")]}}],
                 "page_info": {"has_previous_page": True, "start_cursor": "previous"}}
 elif url.path == "/backend-api/conversations":
     archived = "is_archived=true" in config

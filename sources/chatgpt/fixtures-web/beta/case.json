@@ -1,0 +1,14 @@
+{
+  "name": "authenticated web acquisition",
+  "description": "Synthetic bearer credentials and project listings drive reconciled acquisition through the Wasm host.",
+  "opaque_locator": "chatgpt:web",
+  "options": {"projects": "id:g-p-beta"},
+  "limit": 1,
+  "documents": [{
+    "external_id": "project-beta-chat-1",
+    "title": "Web conversation",
+    "kind": "transcript",
+    "tags": ["chatgpt", "transcript"],
+    "segments": ["[user id=old]\nBefore\n\n", "[assistant id=new]\nAfter\n\n"]
+  }]
+}

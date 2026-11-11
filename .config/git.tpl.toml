@@ -19,7 +19,6 @@ codecov_project_target = "15%"
 codecov_source_target = "80%"
 core_versions = [
     "development",
-    "0.5",
 ]
 description = "OpenAI Codex and ChatGPT history with Codex integration"
 embedding_template = "https://github.com/memcastle/memcastle-embedding-provider.tpl"
