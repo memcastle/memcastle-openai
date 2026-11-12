@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.0 - 2026-11-12
+
+
+### Features
+- Adopt Core-managed reconciliation (#19) (989a553)
 ## 0.1.0 - 2026-10-21
 
 
