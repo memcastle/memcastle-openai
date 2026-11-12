@@ -2,7 +2,7 @@
 import assert from "node:assert/strict"
 import { copyFileSync, readFileSync } from "node:fs"
 import { join } from "node:path"
-import { ROOT, isolated, mine, pluginArchive } from "./smoke_common.mjs"
+import { ROOT, isolated, mine, pluginArchive, waitJob } from "./smoke_common.mjs"
 
 // A standalone package exercises this source without building the plugin's unrelated Codex/integration modules.
 const sourceArchive = process.env.SOURCE_ARCHIVE
@@ -33,32 +33,18 @@ for (const [token, cookie] of [["fixture-session", "fixture-cookie"], ["fixture-
     assert.equal((await run(exportPath)).result.created, 0)
     assert.equal((await run(exportPath, { mode: "export" })).result.created, 0)
     assert.equal((await run(exportPath, { mode: "web" })).status, "failed")
-    // Provider CI also tests published Core main, which need not have the companion configuration routes yet.
-    let hasSourceConfigs = false
-    try {
-      await request("/api/source-configs/chatgpt-work", { method: "PUT", json: { source: "chatgpt" } })
-      hasSourceConfigs = true
-    } catch (error) {
-      if (error.status !== 404) throw error
-    }
-    if (hasSourceConfigs) {
-      await assert.rejects(
-        request("/api/source-configs/chatgpt-work/auth", { method: "POST" }),
-        (error) => error.body?.error?.includes("one default web account"),
-      )
-      await request("/api/miners/work-export", { method: "PUT", json: {
-        source: "chatgpt", source_config: "chatgpt-work", locator: exportPath, wing: "work", room: "imports",
-      } })
-      const preset = await request("/api/miners/work-export/run", { method: "POST" })
-      assert.equal(preset.kind.preset.configuration, "chatgpt-work")
-      let completed
-      for (let attempt = 0; attempt < 300; attempt++) {
-        completed = await request(`/api/jobs/${preset.id}`)
-        if (completed.status === "completed" || completed.status === "failed") break
-        await new Promise((done) => setTimeout(done, 100))
-      }
-      assert.equal(completed.status, "completed", JSON.stringify(completed))
-    }
+    await request("/api/source-configs/chatgpt-work", { method: "PUT", json: { source: "chatgpt" } })
+    await assert.rejects(
+      request("/api/source-configs/chatgpt-work/auth", { method: "POST" }),
+      (error) => error.body?.error?.includes("one default web account"),
+    )
+    await request("/api/miners/work-export", { method: "PUT", json: {
+      source: "chatgpt", source_config: "chatgpt-work", locator: exportPath, wing: "work", room: "imports",
+    } })
+    const preset = await request("/api/miners/work-export/run", { method: "POST" })
+    assert.equal(preset.kind.preset.configuration, "chatgpt-work")
+    const completed = await waitJob(request, preset)
+    assert.equal(completed.status, "completed", JSON.stringify(completed))
     const alpha = { mode: "web", account: "fixture", projects: "name:Alpha" }
     const byName = await run(null, alpha)
     assert.equal(byName.status, "completed", JSON.stringify(byName))

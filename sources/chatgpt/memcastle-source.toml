@@ -5,6 +5,7 @@ description = "ChatGPT conversation history from an official export or an experi
 
 [compatibility]
 contract = "0.4.0"
+reconciliation = "0.1.0"
 memcastle = ">=0.5, <0.6"
 
 [capabilities]

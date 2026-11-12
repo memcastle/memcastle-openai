@@ -22,6 +22,7 @@ impl<'de> Visitor<'de> for Conversations<'_> {
     fn visit_seq<A: SeqAccess<'de>>(self, mut entries: A) -> Result<Self::Value, A::Error> {
         let mut collected = Vec::new();
         let mut index = 0;
+        let mut seen = std::collections::HashSet::new();
         while let Some(raw) = entries.next_element::<Box<RawValue>>()? {
             if raw.get().len() > MAX_CONVERSATION {
                 return Err(de::Error::custom(format!(
@@ -31,6 +32,11 @@ impl<'de> Visitor<'de> for Conversations<'_> {
             let value: Value = serde_json::from_str(raw.get()).map_err(de::Error::custom)?;
             let id = super::validate_conversation(&value)
                 .map_err(|error| de::Error::custom(format!("conversation {index}: {error}")))?;
+            if !seen.insert(id.to_string()) {
+                return Err(de::Error::custom(
+                    "the export has duplicate conversation IDs",
+                ));
+            }
             if self.wanted.is_none_or(|wanted| wanted == id) {
                 collected.push(if self.wanted.is_some() {
                     value
@@ -196,9 +202,13 @@ mod tests {
             r#"[{"id":"a","messages":[]},{"id":"a","messages":[]}]"#,
         )
         .unwrap();
-        assert_eq!(ids(&file).unwrap().len(), 2);
+        assert!(ids(&file).unwrap_err().contains("duplicate"));
         assert!(conversation(&file, "a").unwrap_err().contains("duplicate"));
-        assert!(conversation(&file, "missing").unwrap().is_none());
+        assert!(
+            conversation(&file, "missing")
+                .unwrap_err()
+                .contains("duplicate")
+        );
         let zip = dir.join("broken.zip");
         std::fs::write(&zip, b"PK\x03\x04not a zip").unwrap();
         assert!(ids(&zip).unwrap_err().contains("damaged"));

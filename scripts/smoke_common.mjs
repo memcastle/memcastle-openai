@@ -27,12 +27,16 @@ export async function mine(request, source, locator, options) {
   const job = await request("/api/jobs", { method: "POST", json: {
     type: "mine", source, requested_by: "test", ...(locator && { locator }), ...(options && { options }),
   } })
-  for (let attempt = 0; attempt < 300; attempt++) {
+  return waitJob(request, job)
+}
+
+export async function waitJob(request, job) {
+  for (let attempt = 0; attempt < 600; attempt++) {
     const result = await request(`/api/jobs/${job.id}`)
     if (["completed", "failed", "cancelled"].includes(result.status)) return result
     await new Promise((done) => setTimeout(done, 100))
   }
-  throw new Error(`${source} mining did not finish within 30 seconds`)
+  throw new Error(`mining job ${job.id} did not finish within 60 seconds`)
 }
 
 async function freePort() {

@@ -121,9 +121,15 @@ jobs:
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: '1.4.2'
-      - uses: memcastle/memcastle@main
+      - uses: memcastle/memcastle@c311d09d839afea2e652e8f31e088ebc9792a0f5
+        id: core
         with:
           version: development
+      - name: Require reconciliation-capable Core provenance
+        env:
+          CORE_SHA: ${{ steps.core.outputs.core_sha }}
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/check_core_reconciliation.mjs
       - name: Format, lint and install integration dependencies
         if: ${{ hashFiles(format('integrations/{0}/package.json', matrix.integration)) != '' }}
         env:
@@ -187,9 +193,15 @@ jobs:
           ref: ${{ inputs.tag || github.sha }}
           fetch-depth: 0
           fetch-tags: true
-      - uses: memcastle/memcastle@main
+      - uses: memcastle/memcastle@c311d09d839afea2e652e8f31e088ebc9792a0f5
+        id: core
         with:
           version: development
+      - name: Require reconciliation-capable Core provenance
+        env:
+          CORE_SHA: ${{ steps.core.outputs.core_sha }}
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/check_core_reconciliation.mjs
 
       - uses: actions/download-artifact@v8
         with:
@@ -209,7 +221,16 @@ jobs:
 
 
       - name: Package plugin
-        run: memcastle plugin package
+        run: |
+          mkdir -p sources/codex/dist sources/chatgpt/dist
+          cp sources/codex/source.wasm sources/codex/dist/source.wasm
+          cp sources/chatgpt/source.wasm sources/chatgpt/dist/source.wasm
+          memcastle source test sources/codex --no-build
+          PATH="$PWD/sources/chatgpt/fixtures/bin:$PATH" memcastle source test sources/chatgpt --no-build
+          node scripts/conformance_web.mjs
+          archive="$(memcastle plugin package --json | jq -er .archive)"
+          memcastle plugin test "$archive"
+          ARCHIVE="$archive" node scripts/smoke_reconciliation.mjs
       - uses: actions/upload-artifact@v7
         with:
           name: plugin-package
@@ -226,11 +247,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        core: ["development", "0.5"]
-    uses: memcastle/memcastle/.github/workflows/plugin-validation.yaml@main
+        core: ["development"]
+    uses: memcastle/memcastle/.github/workflows/plugin-validation.yaml@c311d09d839afea2e652e8f31e088ebc9792a0f5
     with:
       artifact-name: plugin-package
       core-version: ${{ matrix.core }}
       plugin-ref: ${{ inputs.tag }}
       fixture-bin: sources/chatgpt/fixtures/bin
-      extra-smoke-command: node scripts/smoke_adoption.mjs && node scripts/smoke_chatgpt.mjs
+      extra-smoke-command: node scripts/conformance_web.mjs && node scripts/smoke_adoption.mjs && node scripts/smoke_chatgpt.mjs && node scripts/smoke_reconciliation.mjs

@@ -1,0 +1,7 @@
+{
+  "name": "empty Codex tree checkpoints",
+  "description": "An empty session directory completes with a traversal checkpoint and no documents.",
+  "locator": "tree",
+  "limit": 1,
+  "documents": []
+}

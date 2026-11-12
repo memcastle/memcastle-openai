@@ -10,10 +10,13 @@ use serde_json::{Value, json};
 
 wit_bindgen::generate!({
     path: "wit",
-    world: "source",
+    world: "reconciled-source",
 });
 
 use exports::memcastle::source::adapter::Guest;
+use exports::memcastle::source::reconciliation::{
+    self, Acquisition, Decision, DiscoveryPage, KnownDocument,
+};
 use memcastle::source::types::{
     Candidate, CanonicalDocument, Discovery, RawDocument, Segment, SourceError, SourceKind,
     SourceRef,
@@ -80,7 +83,7 @@ fn parse_cursor(cursor: &str) -> Result<Option<(i64, String)>, SourceError> {
     let invalid = |message: &str| SourceError::CursorInvalid(message.to_string());
     let value: Value =
         serde_json::from_str(cursor).map_err(|_| invalid("the cursor is not JSON"))?;
-    if value.is_null() {
+    if value.is_null() || value.get("empty") == Some(&Value::Bool(true)) {
         return Ok(None);
     }
     let mtime_ns = value
@@ -147,16 +150,208 @@ fn first_line(text: &str) -> String {
         .collect()
 }
 
+fn absolute_path(value: &str) -> Option<PathBuf> {
+    use std::path::Component;
+    let path = Path::new(value);
+    if !path.is_absolute() {
+        return None;
+    }
+    let mut result = PathBuf::new();
+    for component in path.components() {
+        match component {
+            Component::ParentDir => {
+                result.pop();
+            }
+            Component::CurDir => (),
+            other => result.push(other.as_os_str()),
+        }
+    }
+    Some(result)
+}
+
+fn project(source: &SourceRef) -> Option<PathBuf> {
+    source
+        .options
+        .iter()
+        .find(|(key, _)| key == "project")
+        .and_then(|(_, value)| absolute_path(value))
+}
+
+fn valid_key(key: &str) -> bool {
+    let parts: Vec<_> = key.split('/').collect();
+    parts.len() == 4
+        && parts[..3]
+            .iter()
+            .all(|part| !part.is_empty() && part.bytes().all(|b| b.is_ascii_digit()))
+        && parts[3].starts_with("rollout-")
+        && parts[3].ends_with(".jsonl")
+        && !key.contains("..")
+        && !key.contains('\\')
+}
+
+fn snapshot(source: &SourceRef, key: &str) -> Result<Option<RawDocument>, SourceError> {
+    use std::io::Read;
+    if !valid_key(key) {
+        return Err(SourceError::InvalidInput("invalid rollout ID".into()));
+    }
+    let path = path_of(source, key);
+    let mut file = match std::fs::File::open(&path) {
+        Ok(file) => file,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(_) => return Err(SourceError::Failed("cannot open Codex rollout".into())),
+    };
+    let before = file
+        .metadata()
+        .map_err(|_| SourceError::Failed("cannot inspect rollout".into()))?;
+    let mut body = String::new();
+    file.read_to_string(&mut body)
+        .map_err(|_| SourceError::Failed("cannot read rollout".into()))?;
+    let after = file
+        .metadata()
+        .map_err(|_| SourceError::Failed("cannot inspect rollout".into()))?;
+    if before.len() != after.len() || before.modified().ok() != after.modified().ok() {
+        return Ok(None);
+    }
+    let mut cwd: Option<PathBuf> = None;
+    let mut ambiguous = false;
+    for line in body.lines().filter(|line| !line.trim().is_empty()) {
+        let Ok(entry) = serde_json::from_str::<Value>(line) else {
+            return Ok(None);
+        };
+        if !entry.is_object() {
+            return Ok(None);
+        }
+        let value = payload(&entry);
+        let kind = value
+            .get("type")
+            .or_else(|| entry.get("type"))
+            .and_then(Value::as_str);
+        if matches!(kind, Some("session_meta" | "session")) {
+            let next = value
+                .get("cwd")
+                .and_then(Value::as_str)
+                .and_then(absolute_path);
+            if next.is_none() || cwd.as_ref().is_some_and(|old| Some(old) != next.as_ref()) {
+                ambiguous = true;
+            }
+            cwd = next;
+        }
+    }
+    if ambiguous {
+        cwd = None;
+    }
+    let raw = RawDocument {
+        external_id: key.into(),
+        revision: revision_of(&body),
+        body,
+        metadata: json!({"path":path.display().to_string(), "cwd":cwd}).to_string(),
+        occurred_at: None,
+    };
+    if Codex::normalize(raw.clone())?.segments.is_empty() {
+        return Ok(None);
+    }
+    Ok(Some(raw))
+}
+
+fn membership(source: &SourceRef, metadata: &str) -> Option<bool> {
+    let Some(project) = project(source) else {
+        return Some(true);
+    };
+    let metadata: Value = serde_json::from_str(metadata).ok()?;
+    let cwd = metadata.get("cwd")?.as_str().and_then(absolute_path)?;
+    Some(cwd.starts_with(project))
+}
+
+impl reconciliation::Guest for Codex {
+    fn reconcile(source: SourceRef, known: KnownDocument) -> Result<Decision, SourceError> {
+        let raw = snapshot(&source, &known.external_id)?;
+        let metadata = raw.as_ref().map(|raw| raw.metadata.as_str());
+        // Old membership is usable for scope changes only when the file has actually disappeared.
+        let metadata = metadata.or_else(|| {
+            (!path_of(&source, &known.external_id).exists()).then_some(known.metadata.as_str())
+        });
+        match metadata.and_then(|metadata| membership(&source, metadata)) {
+            Some(false) => Ok(Decision::Retire("outside_project_scope".into())),
+            Some(true) if raw.is_some() => Ok(Decision::Refresh(known.external_id)),
+            _ => Ok(Decision::Unchanged),
+        }
+    }
+
+    fn discover(
+        source: SourceRef,
+        cursor: String,
+        limit: u32,
+    ) -> Result<DiscoveryPage, SourceError> {
+        let discovery = <Self as Guest>::discover(source.clone(), cursor.clone(), limit)?;
+        let cursor_after = Some(
+            discovery
+                .candidates
+                .last()
+                .map(|candidate| candidate.cursor_after.clone())
+                .unwrap_or_else(|| {
+                    if cursor == "null" {
+                        json!({"empty":true}).to_string()
+                    } else {
+                        cursor
+                    }
+                }),
+        );
+        let mut candidates = Vec::new();
+        for candidate in discovery.candidates {
+            // Unknown membership is still registered before acquisition, so incomplete first reads remain recoverable.
+            if let Some(raw) = snapshot(&source, &candidate.external_id)?
+                && membership(&source, &raw.metadata) == Some(false)
+            {
+                continue;
+            }
+            candidates.push(candidate);
+        }
+        Ok(DiscoveryPage {
+            candidates,
+            exhausted: discovery.exhausted,
+            cursor_after,
+        })
+    }
+
+    fn acquire(source: SourceRef, candidate: Candidate) -> Result<Acquisition, SourceError> {
+        if candidate.handle != candidate.external_id {
+            return Err(SourceError::InvalidInput(
+                "rollout handle names another document".into(),
+            ));
+        }
+        let Some(raw) = snapshot(&source, &candidate.external_id)? else {
+            return Ok(Acquisition::Skip);
+        };
+        Ok(match membership(&source, &raw.metadata) {
+            Some(true) => Acquisition::Document(raw),
+            Some(false) => Acquisition::Retire("outside_project_scope".into()),
+            None => Acquisition::Skip,
+        })
+    }
+}
+
 impl Guest for Codex {
     fn identify(
         locator: Option<String>,
         options: Vec<(String, String)>,
     ) -> Result<SourceRef, SourceError> {
-        if let Some((key, _)) = options.first() {
-            return Err(SourceError::InvalidInput(format!(
-                "the codex source has no option `{key}`"
-            )));
-        }
+        let options = match options.as_slice() {
+            [] => vec![],
+            [(key, value)] if key == "project" => vec![(
+                key.clone(),
+                absolute_path(value)
+                    .ok_or_else(|| {
+                        SourceError::InvalidInput("project must be an absolute path".into())
+                    })?
+                    .display()
+                    .to_string(),
+            )],
+            _ => {
+                return Err(SourceError::InvalidInput(
+                    "use only project=/absolute/workspace/path".into(),
+                ));
+            }
+        };
         let root = locator.map(PathBuf::from).or_else(default_root).ok_or_else(|| {
             SourceError::InvalidInput("cannot tell where Codex keeps its sessions without a home directory; give the sessions directory as the locator".to_string())
         })?;
@@ -170,7 +365,7 @@ impl Guest for Codex {
             source: NAME.to_string(),
             account: None,
             locator: root.display().to_string(),
-            options: Vec::new(),
+            options,
         })
     }
 
@@ -315,6 +510,177 @@ export!(Codex);
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn reconciles_edits_scope_and_incomplete_or_rotated_rollouts() {
+        let root = std::env::temp_dir().join(format!("codex-reconcile-{}", std::process::id()));
+        let dated = root.join("2026/11/11");
+        std::fs::create_dir_all(&dated).unwrap();
+        let key = "2026/11/11/rollout-test.jsonl";
+        let path = root.join(key);
+        let body = concat!(
+            "{\"type\":\"session_meta\",\"payload\":{\"cwd\":\"/work/app/sub\"}}\n",
+            "{\"type\":\"message\",\"role\":\"user\",\"content\":\"Hello\"}\n"
+        );
+        std::fs::write(&path, body).unwrap();
+        let source = Codex::identify(
+            Some(root.display().to_string()),
+            vec![("project".into(), "/work/./app".into())],
+        )
+        .unwrap();
+        let candidate = Candidate {
+            external_id: key.into(),
+            handle: key.into(),
+            cursor_after: "null".into(),
+        };
+        let Acquisition::Document(raw) =
+            <Codex as reconciliation::Guest>::acquire(source.clone(), candidate.clone()).unwrap()
+        else {
+            panic!("expected document")
+        };
+        let known = KnownDocument {
+            pending: false,
+            retired: false,
+            external_id: key.into(),
+            revision: raw.revision.clone(),
+            metadata: raw.metadata.clone(),
+        };
+        assert!(matches!(
+            <Codex as reconciliation::Guest>::reconcile(source.clone(), known.clone()).unwrap(),
+            Decision::Refresh(_)
+        ));
+        // A valid shorter rewrite is an edit, whereas a partial trailing record must preserve old content.
+        std::fs::write(&path, body.replace("Hello", "Hi")).unwrap();
+        let Acquisition::Document(edited) =
+            <Codex as reconciliation::Guest>::acquire(source.clone(), candidate.clone()).unwrap()
+        else {
+            panic!()
+        };
+        assert_ne!(edited.revision, raw.revision);
+        for incomplete in [
+            format!("{body}{{"),
+            " \n".into(),
+            "{}\n".into(),
+            "[]\n".into(),
+        ] {
+            std::fs::write(&path, incomplete).unwrap();
+            assert!(matches!(
+                <Codex as reconciliation::Guest>::acquire(source.clone(), candidate.clone())
+                    .unwrap(),
+                Acquisition::Skip
+            ));
+            assert!(matches!(
+                <Codex as reconciliation::Guest>::reconcile(source.clone(), known.clone()).unwrap(),
+                Decision::Unchanged
+            ));
+        }
+        std::fs::write(&path, body).unwrap();
+        let excluded = SourceRef {
+            options: vec![("project".into(), "/work/application".into())],
+            ..source.clone()
+        };
+        assert!(matches!(
+            <Codex as reconciliation::Guest>::reconcile(excluded.clone(), known.clone()).unwrap(),
+            Decision::Retire(_)
+        ));
+        assert!(matches!(
+            <Codex as reconciliation::Guest>::acquire(excluded.clone(), candidate.clone()).unwrap(),
+            Acquisition::Retire(_)
+        ));
+        let page =
+            <Codex as reconciliation::Guest>::discover(excluded.clone(), "null".into(), 1).unwrap();
+        assert!(page.candidates.is_empty() && page.exhausted && page.cursor_after.is_some());
+        let restored = KnownDocument {
+            retired: true,
+            ..known.clone()
+        };
+        assert!(matches!(
+            <Codex as reconciliation::Guest>::reconcile(source.clone(), restored).unwrap(),
+            Decision::Refresh(_)
+        ));
+        std::fs::remove_file(&path).unwrap();
+        assert!(matches!(
+            <Codex as reconciliation::Guest>::reconcile(source.clone(), known.clone()).unwrap(),
+            Decision::Unchanged
+        ));
+        assert!(matches!(
+            <Codex as reconciliation::Guest>::reconcile(excluded, known).unwrap(),
+            Decision::Retire(_)
+        ));
+        // Pending registration needs no previous revision or metadata and can recover once the file returns.
+        let pending = KnownDocument {
+            pending: true,
+            retired: false,
+            external_id: key.into(),
+            revision: String::new(),
+            metadata: "{}".into(),
+        };
+        assert!(matches!(
+            <Codex as reconciliation::Guest>::reconcile(source.clone(), pending.clone()).unwrap(),
+            Decision::Unchanged
+        ));
+        std::fs::write(&path, body).unwrap();
+        assert!(matches!(
+            <Codex as reconciliation::Guest>::reconcile(source.clone(), pending).unwrap(),
+            Decision::Refresh(_)
+        ));
+        assert!(snapshot(&source, "../secret").is_err());
+        assert!(
+            Codex::identify(
+                Some(root.display().to_string()),
+                vec![("project".into(), "relative".into())]
+            )
+            .is_err()
+        );
+        assert!(!valid_key("/2026/11/11/rollout-test.jsonl"));
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn unknown_project_membership_defers_without_retirement() {
+        let root = std::env::temp_dir().join(format!("codex-membership-{}", std::process::id()));
+        std::fs::create_dir_all(root.join("2026/11/11")).unwrap();
+        let source = Codex::identify(
+            Some(root.display().to_string()),
+            vec![("project".into(), "/work/app".into())],
+        )
+        .unwrap();
+        let empty =
+            <Codex as reconciliation::Guest>::discover(source.clone(), "null".into(), 1).unwrap();
+        assert!(empty.exhausted && empty.candidates.is_empty());
+        assert!(empty.cursor_after.is_some());
+        assert!(
+            parse_cursor(empty.cursor_after.as_ref().unwrap())
+                .unwrap()
+                .is_none()
+        );
+        let key = "2026/11/11/rollout-test.jsonl";
+        for meta in [
+            "",
+            "{\"type\":\"session_meta\",\"cwd\":\"relative\"}\n",
+            "{\"type\":\"session_meta\",\"cwd\":\"/one\"}\n{\"type\":\"session_meta\",\"cwd\":\"/two\"}\n",
+        ] {
+            std::fs::write(
+                root.join(key),
+                format!("{meta}{{\"type\":\"message\",\"role\":\"user\",\"content\":\"Hi\"}}"),
+            )
+            .unwrap();
+            let candidate = Candidate {
+                external_id: key.into(),
+                handle: key.into(),
+                cursor_after: "null".into(),
+            };
+            assert!(matches!(
+                <Codex as reconciliation::Guest>::acquire(source.clone(), candidate).unwrap(),
+                Acquisition::Skip
+            ));
+        }
+        assert_eq!(
+            absolute_path("/work/../app").unwrap(),
+            PathBuf::from("/app")
+        );
+        std::fs::remove_dir_all(root).unwrap();
+    }
 
     fn source(root: &Path) -> SourceRef {
         Codex::identify(Some(root.display().to_string()), vec![]).unwrap()

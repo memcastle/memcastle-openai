@@ -18,6 +18,44 @@ const MAX_PROJECT_PAGES: usize = 100;
 // This browser-style value received a JSON 200 without any cookie, including after token refresh.
 const USER_AGENT: &str = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
 
+// No HTTP status is by itself affirmative document-removal evidence.
+#[derive(Debug, PartialEq)]
+enum HttpFailure {
+    Credentials,
+    RateLimited,
+    Redirect,
+    Other(String),
+}
+
+impl HttpFailure {
+    fn classify(code: &str) -> Self {
+        match code {
+            "401" | "403" => Self::Credentials,
+            "429" => Self::RateLimited,
+            "301" | "302" | "307" | "308" => Self::Redirect,
+            other => Self::Other(other.to_string()),
+        }
+    }
+}
+
+impl std::fmt::Display for HttpFailure {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Credentials => {
+                f.write_str("ChatGPT refused the session; replace the daemon's session credentials")
+            }
+            Self::RateLimited => f.write_str("ChatGPT rate-limited this source; retry later"),
+            Self::Redirect => f.write_str(
+                "ChatGPT redirected a private API request; refusing to forward session credentials",
+            ),
+            Self::Other(code) => write!(
+                f,
+                "ChatGPT private API returned HTTP {code}; its interface may have changed"
+            ),
+        }
+    }
+}
+
 pub(super) fn check_auth() -> Result<(), String> {
     bearer().map(|_| ())
 }
@@ -272,20 +310,10 @@ fn request(path: &str) -> Result<Value, String> {
     let (body, code) = text
         .rsplit_once("\nMEMCASTLE_HTTP_STATUS:")
         .ok_or("ChatGPT response lacks an HTTP status")?;
-    match code.trim() {
-        "200" => serde_json::from_str(body).map_err(|_| "ChatGPT returned malformed JSON".into()),
-        "401" | "403" => {
-            Err("ChatGPT refused the session; replace the daemon's session credentials".into())
-        }
-        "429" => Err("ChatGPT rate-limited this source; retry later".into()),
-        "301" | "302" | "307" | "308" => Err(
-            "ChatGPT redirected a private API request; refusing to forward session credentials"
-                .into(),
-        ),
-        _ => Err(format!(
-            "ChatGPT private API returned HTTP {}; its interface may have changed",
-            code.trim()
-        )),
+    if code.trim() == "200" {
+        serde_json::from_str(body).map_err(|_| "ChatGPT returned malformed JSON".into())
+    } else {
+        Err(HttpFailure::classify(code.trim()).to_string())
     }
 }
 
@@ -317,6 +345,7 @@ fn list_status(archived: bool) -> Result<Vec<String>, String> {
             let id = item
                 .get("id")
                 .and_then(Value::as_str)
+                .filter(|id| valid_id(id))
                 .ok_or("a ChatGPT conversation lacks an id")?;
             if !seen.insert(id.to_string()) {
                 return Err(
@@ -325,7 +354,10 @@ fn list_status(archived: bool) -> Result<Vec<String>, String> {
             }
             ids.push(id.to_string());
         }
-        if ids.len() as u64 >= total {
+        if ids.len() as u64 > total {
+            return Err("ChatGPT conversation listing exceeds its reported total".into());
+        }
+        if ids.len() as u64 == total {
             ids.sort();
             return Ok(ids);
         }
@@ -470,22 +502,35 @@ pub(super) fn conversation(id: &str) -> Result<Value, String> {
 }
 
 #[cfg(test)]
+pub(super) fn mocked<T>(
+    handler: impl Fn(&str) -> Result<Value, String> + 'static,
+    run: impl FnOnce() -> T,
+) -> T {
+    MOCK_REQUEST.with(|mock| *mock.borrow_mut() = Some(Box::new(handler)));
+    struct Reset;
+    impl Drop for Reset {
+        fn drop(&mut self) {
+            MOCK_REQUEST.with(|mock| *mock.borrow_mut() = None);
+        }
+    }
+    let _reset = Reset;
+    run()
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
 
-    fn mocked<T>(
-        handler: impl Fn(&str) -> Result<Value, String> + 'static,
-        run: impl FnOnce() -> T,
-    ) -> T {
-        MOCK_REQUEST.with(|mock| *mock.borrow_mut() = Some(Box::new(handler)));
-        struct Reset;
-        impl Drop for Reset {
-            fn drop(&mut self) {
-                MOCK_REQUEST.with(|mock| *mock.borrow_mut() = None);
-            }
-        }
-        let _reset = Reset;
-        run()
+    #[test]
+    fn http_errors_are_never_document_retirements() {
+        assert_eq!(HttpFailure::classify("403"), HttpFailure::Credentials);
+        assert_eq!(HttpFailure::classify("429"), HttpFailure::RateLimited);
+        assert_eq!(HttpFailure::classify("302"), HttpFailure::Redirect);
+        assert_eq!(
+            HttpFailure::classify("404"),
+            HttpFailure::Other("404".into())
+        );
+        assert!(HttpFailure::classify("500").to_string().contains("500"));
     }
 
     fn project(id: &str, name: &str) -> Project {

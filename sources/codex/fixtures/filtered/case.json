@@ -1,0 +1,15 @@
+{
+  "name": "filtered Codex pages checkpoint",
+  "description": "Scanning one rollout per page can advance past excluded sessions without synthetic documents.",
+  "locator": "../codex-rollouts/tree",
+  "options": {"project": "/work/other"},
+  "limit": 1,
+  "documents": [{
+    "external_id": "2026/10/08/rollout-2026-10-08T11-00-00-session-b.jsonl",
+    "title": "Second session.",
+    "kind": "transcript",
+    "tags": ["transcript", "codex"],
+    "room": "other",
+    "segments": ["# Codex session session-b\nworking directory: /work/other\n\n", "### user\nSecond session.\n\n"]
+  }]
+}

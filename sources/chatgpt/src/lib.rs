@@ -9,10 +9,13 @@ use sha2::{Digest, Sha256};
 
 wit_bindgen::generate!({
     path: "wit",
-    world: "source",
+    world: "reconciled-source",
 });
 
 use exports::memcastle::source::adapter::Guest;
+use exports::memcastle::source::reconciliation::{
+    self, Acquisition, Decision, DiscoveryPage, KnownDocument,
+};
 use memcastle::source::types::{
     Candidate, CanonicalDocument, Discovery, RawDocument, Segment, SourceError, SourceKind,
     SourceRef,
@@ -90,6 +93,9 @@ fn cursor(cursor: &str) -> Result<(Option<String>, bool), SourceError> {
         .map_err(|_| SourceError::CursorInvalid("the cursor is not JSON".into()))?;
     if value.is_null() {
         return Ok((None, false));
+    }
+    if value.get("after") == Some(&Value::Null) && value.get("done") == Some(&Value::Bool(true)) {
+        return Ok((None, true));
     }
     let key = value
         .get("after")
@@ -245,6 +251,8 @@ impl Guest for ChatGpt {
         locator: Option<String>,
         options: Vec<(String, String)>,
     ) -> Result<SourceRef, SourceError> {
+        // Accept our canonical web locator as well as the locator-less shorthand.
+        let locator = locator.filter(|locator| locator != "chatgpt:web");
         let mut account = None;
         let mut mode = None;
         let mut projects = None;
@@ -288,14 +296,13 @@ impl Guest for ChatGpt {
             }
             // A web run must establish its authorization before the pipeline creates its source record or cursor.
             web::check_auth().map_err(failed)?;
-            let mut account = account.unwrap_or_else(|| "default".to_string());
+            let account = account.unwrap_or_else(|| "default".to_string());
             let mut options = options;
             if let Some(selection) = projects {
                 let available = web::projects().map_err(failed)?;
                 let selected = web::select_projects(&selection, &available)
                     .map_err(SourceError::InvalidInput)?;
                 let ids: Vec<_> = selected.iter().map(|project| project.id.as_str()).collect();
-                account = json!({"account": account, "projects": ids}).to_string();
                 // Normalizing names into IDs pins this run's discovery to the exact slice it identified.
                 if let Some((_, value)) = options.iter_mut().find(|(key, _)| key == "projects") {
                     *value = ids
@@ -305,6 +312,7 @@ impl Guest for ChatGpt {
                         .join(",");
                 }
             }
+            options.sort();
             return Ok(SourceRef {
                 source: "chatgpt".into(),
                 account: Some(account),
@@ -406,7 +414,15 @@ impl Guest for ChatGpt {
                 (None, None) => None,
                 _ => return Err(failed("ChatGPT project provenance is incomplete")),
             };
-            web::conversation(&candidate.external_id).map_err(failed)?
+            let value = web::conversation(&candidate.external_id).map_err(failed)?;
+            if let Some(current) = value.get("gizmo_id").and_then(Value::as_str)
+                && project.as_ref().is_none_or(|(id, _)| id != current)
+            {
+                return Err(failed(
+                    "ChatGPT project membership changed during acquisition; retry the mine",
+                ));
+            }
+            value
         } else {
             let Some(value) =
                 export::conversation(&PathBuf::from(&source.locator), &candidate.handle)
@@ -462,11 +478,301 @@ impl Guest for ChatGpt {
     }
 }
 
+impl reconciliation::Guest for ChatGpt {
+    fn reconcile(source: SourceRef, known: KnownDocument) -> Result<Decision, SourceError> {
+        // Core stores IDs before first acquisition; neither a saved discovery handle nor metadata is required.
+        if source.locator != "chatgpt:web" {
+            return Ok(
+                if export::conversation(&PathBuf::from(&source.locator), &known.external_id)
+                    .map_err(failed)?
+                    .is_some()
+                {
+                    Decision::Refresh(known.external_id)
+                } else {
+                    Decision::Unchanged
+                },
+            );
+        }
+        Ok(Decision::Refresh(
+            json!({"id":known.external_id}).to_string(),
+        ))
+    }
+
+    fn discover(
+        source: SourceRef,
+        previous: String,
+        limit: u32,
+    ) -> Result<DiscoveryPage, SourceError> {
+        let (after, done) = cursor(&previous)?;
+        let mut items = records(&source)?;
+        items.sort_by(|a, b| id_of(a).cmp(&id_of(b)));
+        if items
+            .windows(2)
+            .any(|pair| id_of(&pair[0]) == id_of(&pair[1]))
+        {
+            return Err(failed("the ChatGPT listing has duplicate conversation IDs"));
+        }
+        let remaining: Vec<_> = items
+            .into_iter()
+            .filter(|value| {
+                done || after
+                    .as_deref()
+                    .is_none_or(|after| id_of(value).is_some_and(|id| id > after))
+            })
+            .collect();
+        let exhausted = remaining.len() <= limit as usize;
+        let mut candidates = Vec::new();
+        for value in remaining.into_iter().take(limit as usize) {
+            let id = id_of(&value)
+                .ok_or_else(|| failed("a ChatGPT conversation has no id"))?
+                .to_string();
+            candidates.push(Candidate {
+                cursor_after: json!({"after":id,"done":false}).to_string(),
+                handle: if source.locator == "chatgpt:web" {
+                    value.to_string()
+                } else {
+                    id.clone()
+                },
+                external_id: id,
+            });
+        }
+        let cursor_after = if exhausted {
+            Some(json!({"after":candidates.last().map(|candidate| &candidate.external_id).or(after.as_ref()),"done":true}).to_string())
+        } else {
+            candidates
+                .last()
+                .map(|candidate| candidate.cursor_after.clone())
+        };
+        Ok(DiscoveryPage {
+            candidates,
+            exhausted,
+            cursor_after,
+        })
+    }
+
+    fn acquire(source: SourceRef, mut candidate: Candidate) -> Result<Acquisition, SourceError> {
+        if source.locator == "chatgpt:web" {
+            let handle: Value = serde_json::from_str(&candidate.handle)
+                .map_err(|_| failed("invalid ChatGPT handle"))?;
+            if id_of(&handle) != Some(candidate.external_id.as_str()) {
+                return Err(failed("ChatGPT handle names another document"));
+            }
+            // Positive current membership is evidence; absence from this listing never proves removal.
+            let available = web::projects().map_err(failed)?;
+            let selection = source
+                .options
+                .iter()
+                .find(|(key, _)| key == "projects")
+                .map(|(_, value)| web::select_projects(value, &available))
+                .transpose()
+                .map_err(failed)?;
+            let listing = web::list(Some(&available))
+                .map_err(failed)?
+                .into_iter()
+                .find(|entry| entry.id == candidate.external_id);
+            if let Some(selected) = &selection {
+                match listing.as_ref().and_then(|entry| entry.project.as_ref()) {
+                    Some(project) if !selected.iter().any(|selected| selected.id == project.id) => {
+                        return Ok(Acquisition::Retire("outside_project_scope".into()));
+                    }
+                    Some(_) => (),
+                    None => return Ok(Acquisition::Skip),
+                }
+            }
+            let project = listing.and_then(|entry| entry.project);
+            candidate.handle = json!({"id":candidate.external_id,"project_id":project.as_ref().map(|p| &p.id),"project_name":project.as_ref().map(|p| &p.name)}).to_string();
+        } else if candidate.handle != candidate.external_id {
+            return Err(failed("export handle names another document"));
+        }
+        Ok(match <Self as Guest>::read(source, candidate)? {
+            Some(raw) => Acquisition::Document(raw),
+            None => Acquisition::Skip,
+        })
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
 export!(ChatGpt);
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn export_reconciliation_preserves_omissions_and_recovers_pending_ids() {
+        let path =
+            std::env::temp_dir().join(format!("chatgpt-reconcile-{}.json", std::process::id()));
+        std::fs::write(&path, r#"[{"id":"a","messages":[]}]"#).unwrap();
+        let source = ChatGpt::identify(Some(path.display().to_string()), vec![]).unwrap();
+        let known = KnownDocument {
+            pending: true,
+            retired: false,
+            external_id: "a".into(),
+            revision: String::new(),
+            metadata: "{}".into(),
+        };
+        assert!(matches!(
+            <ChatGpt as reconciliation::Guest>::reconcile(source.clone(), known.clone()).unwrap(),
+            Decision::Refresh(_)
+        ));
+        let candidate = Candidate {
+            external_id: "a".into(),
+            handle: "a".into(),
+            cursor_after: "null".into(),
+        };
+        assert!(matches!(
+            <ChatGpt as reconciliation::Guest>::acquire(source.clone(), candidate.clone()).unwrap(),
+            Acquisition::Document(_)
+        ));
+        let first =
+            <ChatGpt as reconciliation::Guest>::discover(source.clone(), "null".into(), 1).unwrap();
+        assert_eq!(first.candidates.len(), 1);
+        std::fs::write(&path, "[]").unwrap();
+        assert!(matches!(
+            <ChatGpt as reconciliation::Guest>::reconcile(source.clone(), known.clone()).unwrap(),
+            Decision::Unchanged
+        ));
+        assert!(matches!(
+            <ChatGpt as reconciliation::Guest>::acquire(source.clone(), candidate).unwrap(),
+            Acquisition::Skip
+        ));
+        let empty = <ChatGpt as reconciliation::Guest>::discover(
+            source.clone(),
+            first.candidates[0].cursor_after.clone(),
+            1,
+        )
+        .unwrap();
+        assert!(empty.candidates.is_empty() && empty.exhausted);
+        assert!(empty.cursor_after.is_some());
+        let again = <ChatGpt as reconciliation::Guest>::discover(
+            source.clone(),
+            empty.cursor_after.unwrap(),
+            1,
+        )
+        .unwrap();
+        assert!(again.candidates.is_empty() && again.exhausted);
+        std::fs::write(&path, "[").unwrap();
+        assert!(
+            <ChatGpt as reconciliation::Guest>::reconcile(source.clone(), known.clone()).is_err()
+        );
+        std::fs::remove_file(path).unwrap();
+        assert!(<ChatGpt as reconciliation::Guest>::reconcile(source, known).is_err());
+    }
+
+    #[test]
+    fn web_scope_uses_current_positive_membership_and_restores_unchanged_ids() {
+        web::mocked(
+            |path| {
+                Ok(if path.contains("sidebar") {
+                    json!({"items":[{"gizmo":{"gizmo":{"id":"one","display":{"name":"Alpha"}}}},{"gizmo":{"gizmo":{"id":"two","display":{"name":"Beta"}}}}]})
+                } else if path.contains("gizmos/one/") {
+                    json!({"items":[]})
+                } else if path.contains("gizmos/two/") {
+                    json!({"items":[{"id":"chat","gizmo_id":"two"}]})
+                } else {
+                    json!({"messages":[],"page_info":{"has_previous_page":false}})
+                })
+            },
+            || {
+                let source = SourceRef {
+                    source: "chatgpt".into(),
+                    account: Some("default".into()),
+                    locator: "chatgpt:web".into(),
+                    options: vec![("projects".into(), "id:one".into())],
+                };
+                let known = KnownDocument {
+                    pending: false,
+                    retired: true,
+                    external_id: "chat".into(),
+                    revision: "same".into(),
+                    metadata: "{}".into(),
+                };
+                let Decision::Refresh(handle) =
+                    <ChatGpt as reconciliation::Guest>::reconcile(source.clone(), known).unwrap()
+                else {
+                    panic!()
+                };
+                let candidate = Candidate {
+                    external_id: "chat".into(),
+                    handle,
+                    cursor_after: "null".into(),
+                };
+                assert!(matches!(
+                    <ChatGpt as reconciliation::Guest>::acquire(source.clone(), candidate.clone())
+                        .unwrap(),
+                    Acquisition::Retire(_)
+                ));
+                let restored = SourceRef {
+                    options: vec![("projects".into(), "id:two".into())],
+                    ..source.clone()
+                };
+                let Acquisition::Document(raw) =
+                    <ChatGpt as reconciliation::Guest>::acquire(restored, candidate.clone())
+                        .unwrap()
+                else {
+                    panic!()
+                };
+                assert!(raw.metadata.contains("Beta"));
+                let unknown = Candidate {
+                    external_id: "unknown".into(),
+                    handle: json!({"id":"unknown"}).to_string(),
+                    ..candidate
+                };
+                assert!(matches!(
+                    <ChatGpt as reconciliation::Guest>::acquire(source, unknown).unwrap(),
+                    Acquisition::Skip
+                ));
+            },
+        );
+        web::mocked(
+            |_| Err("global credential failure".into()),
+            || {
+                let source = SourceRef {
+                    source: "chatgpt".into(),
+                    account: None,
+                    locator: "chatgpt:web".into(),
+                    options: vec![],
+                };
+                let candidate = Candidate {
+                    external_id: "chat".into(),
+                    handle: json!({"id":"chat"}).to_string(),
+                    cursor_after: "null".into(),
+                };
+                assert!(<ChatGpt as reconciliation::Guest>::acquire(source, candidate).is_err());
+            },
+        );
+    }
+
+    #[test]
+    fn contradictory_detail_membership_cannot_replace_a_transcript() {
+        web::mocked(
+            |path| {
+                Ok(if path.contains("sidebar") {
+                    json!({"items":[{"gizmo":{"gizmo":{"id":"one","display":{"name":"Alpha"}}}}]})
+                } else if path.contains("gizmos/one/") {
+                    json!({"items":[{"id":"chat","gizmo_id":"one"}]})
+                } else {
+                    json!({"gizmo_id":"other","messages":[],"page_info":{"has_previous_page":false}})
+                })
+            },
+            || {
+                let source = SourceRef {
+                    source: "chatgpt".into(),
+                    account: None,
+                    locator: "chatgpt:web".into(),
+                    options: vec![],
+                };
+                let candidate = Candidate {
+                    external_id: "chat".into(),
+                    handle: json!({"id":"chat"}).to_string(),
+                    cursor_after: "null".into(),
+                };
+                assert!(
+                    matches!(<ChatGpt as reconciliation::Guest>::acquire(source, candidate), Err(SourceError::Failed(message)) if message.contains("membership changed"))
+                );
+            },
+        );
+    }
 
     fn fixture() -> String {
         concat!(

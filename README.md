@@ -17,8 +17,10 @@ and [Codex integration](integrations/codex/README.md) for their respective behav
 
 ## Install
 
-When a release is available in the [MemCastle plugin catalogue](https://memcastle.github.io/plugins.json),
-install it by ID with a plugin-capable Core binary:
+Both sources require Core's reconciliation extension `0.1.0`, currently development Core containing
+[`c311d09` (#378)](https://github.com/memcastle/memcastle/pull/378). A `0.5.2` version label alone does not
+establish support. When a release is available in the [MemCastle plugin catalogue](https://memcastle.github.io/plugins.json),
+install it by ID with an extension-capable Core binary:
 
 ```sh
 memcastle plugin install openai
@@ -41,12 +43,19 @@ web mining. Remove a separately installed legacy source package with the same ID
 Preview `memcastle plugin install openai` and supply the printed consent digests for both sources.
 On a palace previously mined by bundled `codex` or `chatgpt`, also pass `--adopt-source codex` and/or
 `--adopt-source chatgpt` for whichever sources have mined data. Then enable the sources and register the Codex
-integration. Keep existing `[[miners]]` entries, locators, account labels and project filters unchanged;
-they identify existing cursors and retained documents.
+integration.
+
+### Reconciliation identity transition
+
+Named miners now have independently partitioned inventory, cursors and history, even when account, locator
+and destination match. Keep miner names stable when editing filters. ChatGPT project filters are options,
+not account identity hashes. Legacy histories remain retained but are not automatically transferred into
+the new miner identities; reingestion can create another retained copy. This early-0.x transition provides
+no automatic history migration. Package `--adopt-source` transfers package ownership, not miner history.
 
 ## Build and test locally
 
-Install Rust with `wasm32-wasip2`, Bun and a plugin-capable Core binary. Build both source components to their
+Install Rust with `wasm32-wasip2`, Bun and an extension-capable Core binary. Build both source components to their
 `sources/<id>/source.wasm` paths and the Codex integration into `integrations/codex/dist/` before packaging.
 Commit both generated source `Cargo.lock` files. See the CI workflow for reproducible build and copy steps.
 
@@ -56,6 +65,8 @@ memcastle plugin package
 memcastle plugin test dist/openai-VERSION.tar.gz
 node scripts/smoke_adoption.mjs
 node scripts/smoke_chatgpt.mjs
+node scripts/smoke_reconciliation.mjs
+node scripts/conformance_web.mjs
 memcastle source test sources/codex --no-build
 PATH="$PWD/sources/chatgpt/fixtures/bin:$PATH" memcastle source test sources/chatgpt --no-build
 ```
@@ -69,8 +80,10 @@ without network access.
 
 ## CI and releases
 
-Provider CI builds and packages locally, then calls Core's shared validation for `development` and the latest
-stable `0.5` patch. The Core setup action verifies its binary against `SHA256SUMS` and reports its source SHA.
+Provider CI builds and packages locally, then calls Core's shared validation for `development`.
+The pinned Core setup action verifies its binary against `SHA256SUMS` and reports its source SHA.
+Provider-controlled jobs require that SHA to contain #378; source conformance and real-daemon lifecycle tests
+establish actual extension support. Stable `0.5` is not a supported validation target until it includes the extension.
 Validation runs on pull requests and pushes to `main`, checking source fixtures, installation and activation.
 The `VERSION` release tag is validated before attaching the archive to gh-ship's draft release.
 
