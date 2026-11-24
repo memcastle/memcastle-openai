@@ -17,14 +17,14 @@ id = "codex"
 type = "source"
 manifest = "sources/codex/memcastle-source.toml"
 entry = "sources/codex/source.wasm"
-contract = "0.4.0"
+contract = "0.5.0"
 
 [[modules]]
 id = "chatgpt"
 type = "source"
 manifest = "sources/chatgpt/memcastle-source.toml"
 entry = "sources/chatgpt/source.wasm"
-contract = "0.4.0"
+contract = "0.5.0"
 
 
 [[modules]]

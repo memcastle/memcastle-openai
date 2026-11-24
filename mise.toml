@@ -1,2 +1,79 @@
+# Root task configuration and optional release tooling.
+
 [tools]
 git-cliff = "2.12.0"
+
+[tasks."source:codex:format:check"]
+description = "Check formatting for source codex"
+dir = "sources/codex"
+run = "cargo fmt --all -- --check"
+
+[tasks."source:codex:lint"]
+description = "Lint source codex"
+dir = "sources/codex"
+run = "cargo clippy --locked --target wasm32-wasip3 -- -D warnings"
+
+[tasks."source:codex:test"]
+description = "Run native tests for source codex"
+dir = "sources/codex"
+run = "cargo test --locked --lib"
+
+[tasks."source:codex:build"]
+description = "Build the package-ready component for source codex"
+dir = "sources/codex"
+run = '''
+set -eu
+cargo build --locked --release --target wasm32-wasip3
+metadata="$(cargo metadata --locked --no-deps --format-version 1)"
+crate="$(printf '%s' "$metadata" | jq -er '.packages[] | select(.manifest_path == (env.PWD + "/Cargo.toml")) | .targets[] | select(.kind | index("cdylib")) | .name')"
+target="$(printf '%s' "$metadata" | jq -er '.target_directory')"
+cp "$target/wasm32-wasip3/release/$crate.wasm" source.wasm
+'''
+
+[tasks."source:chatgpt:format:check"]
+description = "Check formatting for source chatgpt"
+dir = "sources/chatgpt"
+run = "cargo fmt --all -- --check"
+
+[tasks."source:chatgpt:lint"]
+description = "Lint source chatgpt"
+dir = "sources/chatgpt"
+run = "cargo clippy --locked --target wasm32-wasip3 -- -D warnings"
+
+[tasks."source:chatgpt:test"]
+description = "Run native tests for source chatgpt"
+dir = "sources/chatgpt"
+run = "cargo test --locked --lib"
+
+[tasks."source:chatgpt:build"]
+description = "Build the package-ready component for source chatgpt"
+dir = "sources/chatgpt"
+run = '''
+set -eu
+cargo build --locked --release --target wasm32-wasip3
+metadata="$(cargo metadata --locked --no-deps --format-version 1)"
+crate="$(printf '%s' "$metadata" | jq -er '.packages[] | select(.manifest_path == (env.PWD + "/Cargo.toml")) | .targets[] | select(.kind | index("cdylib")) | .name')"
+target="$(printf '%s' "$metadata" | jq -er '.target_directory')"
+cp "$target/wasm32-wasip3/release/$crate.wasm" source.wasm
+'''
+
+[tasks."integration:codex:format:check"]
+description = "Run format:check for integration codex"
+dir = "integrations/codex"
+run = "bun run format:check"
+
+[tasks."integration:codex:lint"]
+description = "Run lint for integration codex"
+dir = "integrations/codex"
+run = "bun run lint"
+
+[tasks."integration:codex:test"]
+description = "Run test for integration codex"
+dir = "integrations/codex"
+run = "bun test --timeout 60000"
+
+[tasks."integration:codex:build"]
+description = "Run build for integration codex"
+dir = "integrations/codex"
+run = "bun run build"
+

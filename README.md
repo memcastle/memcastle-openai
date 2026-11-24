@@ -12,6 +12,17 @@ OpenAI Codex and ChatGPT history with Codex integration
 This is a versioned MemCastle provider plugin.
 It includes source modules and agent integrations.
 
+## Modules
+
+### Sources
+
+- [codex](sources/codex/)
+- [chatgpt](sources/chatgpt/)
+
+### Integrations
+
+- [codex](integrations/codex/)
+
 ## Install
 
 If this plugin has a published release in the
@@ -30,12 +41,44 @@ After installation, explicitly enable the sources you want to use.
 
 Register integrations with your agent separately; installing the archive alone does not configure an agent.
 
+
+Source and embedding components require migrated development Core from commit `828f0f6` or a descendant
+(Wasmtime 50.0.3).
+Stable 0.5.2 predates this migration even though development currently reports the same version.
+The default `>=0.5, <0.6` compatibility range is transitional; tighten it when a compatible stable release exists.
+
 ## Build and test locally
 
 You'll need a plugin-capable MemCastle Core binary and Git.
 
-Install Rust with the `wasm32-wasip2` target for source and embedding modules.
+Install Rust 1.100+ with `rustup target add wasm32-wasip3`, wasm-tools 1.263.0, and Python 3.11+.
+These components use WASI 0.3.0, source contract 0.5.0 and embedding contract 0.2.0.
+WASI 0.3 support is experimental and does not enable `std::thread::spawn`.
+An external WASI SDK is only needed for builds that explicitly depend on it.
 Install Bun for agent integrations.
+
+### Root module tasks
+
+With [mise](https://mise.jdx.dev/) installed, discover module tasks from the project root:
+
+```sh
+mise tasks ls
+mise run source:codex:test
+mise run integration:codex:test
+```
+
+Every module exposes `build`, `test`, `lint`, and `format:check` under its typed namespace
+(`source:<id>:<operation>`, `integration:<id>:<operation>`, or `embedding:<id>:<operation>`).
+Tasks run in the module's directory, including when invoked from a project subdirectory.
+Follow the linked module README for setup before running checks.
+Generate and commit each Rust module's `Cargo.lock` first, as shown below.
+Rust `test` tasks run native unit tests; `build` tasks require `jq` and copy the release component
+to the module's `source.wasm` or `embedding.wasm`, ready for packaging.
+Run `bun install` in each integration directory before running its tasks.
+
+Host conformance and archive checks are described below.
+
+### Module commands and packaging
 
 For each source, run its tests, build the Wasm component and copy the compiled component
 to `sources/<id>/source.wasm`.
@@ -44,7 +87,7 @@ See the module's README and the CI workflow for its crate-specific artifact name
 ```sh
 cargo generate-lockfile --manifest-path sources/<id>/Cargo.toml
 cargo test --manifest-path sources/<id>/Cargo.toml --locked --lib
-cargo build --manifest-path sources/<id>/Cargo.toml --locked --release --target wasm32-wasip2
+cargo build --manifest-path sources/<id>/Cargo.toml --locked --release --target wasm32-wasip3
 ```
 
 For each integration with a `package.json`,
@@ -69,6 +112,11 @@ memcastle plugin test dist/openai-VERSION.tar.gz
 Replace `VERSION` with the version printed by `memcastle plugin package`
 or the name of the archive in `dist/`.
 
+Validate each built component with `python3 scripts/validate_component.py source sources/<id>/source.wasm`
+or `python3 scripts/validate_component.py embedding embeddings/<id>/embedding.wasm`, as applicable.
+Run `memcastle source test sources/<id>` to execute its conformance fixtures through the real host.
+
+
 The package command reads `plugin.toml` and creates an archive with its own versioned `manifest.toml`
 plus a matching `.sha256sum` file.
 It does not rewrite `plugin.toml` or create a root-level `manifest.toml`.
@@ -82,6 +130,7 @@ Outside a Git checkout, pass `--version` when packaging.
 | Path | Purpose |
 | --- | --- |
 | `plugin.toml` | Plugin identity, supported Core versions and module entries. |
+| `mise.toml` | Root task configuration and release tooling. |
 | `sources/<id>/` | Rust/Wasm source modules, each with its own manifest and tests. |
 | `integrations/<id>/` | Agent integrations and their own assets or builds. |
 | `dist/` | Generated release archive and checksum after packaging. |
@@ -93,7 +142,8 @@ their paths, artifacts and activation remain separate.
 
 CI builds the modules that exist, packages the plugin and validates its archive against MemCastle Core.
 
-The `core_versions` answer defaults to `development` and `0.5` (the latest stable patch in the 0.5 release tree).
+The `core_versions` answer defaults to `development` until a compatible stable release exists.
+
 Validation runs on pull requests and pushes to `main`.
 
 When modules have native tests, their jobs upload available LCOV and JUnit results to Codecov using OIDC.
