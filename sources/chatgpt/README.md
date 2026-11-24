@@ -1,5 +1,10 @@
 # ChatGPT conversation source
 
+Use source contract 0.5.0 with Rust 1.100+, WASI 0.3, and upstream development Core containing `828f0f6`.
+The async WIT exports use stackful `sync: true` bindings while retaining reconciliation extension 0.1.0.
+From the plugin root, `mise run source:chatgpt:build` stages the package-ready component.
+Validate with `python3 scripts/validate_component.py source sources/chatgpt/source.wasm` and wasm-tools 1.263.0.
+
 The `chatgpt` source mines one document per conversation, without making model calls.
 It accepts an official ChatGPT export ZIP with a top-level `conversations.json`, or a standalone `conversations.json`.
 Without an export path the source selects the signed-in web account automatically; `mode=web` remains an explicit option.
@@ -18,7 +23,7 @@ Both paths must exist on the daemon's machine.
 The source is identified by the canonical path to the export file: replacing that file with a newer export preserves its history.
 Choosing a different path creates a different source identity.
 Core independently revisits known/pending IDs and discovers export conversations; unchanged content and metadata
-are idempotent. Both sources require reconciliation extension `0.1.0` (development Core containing #378 / `c311d09`);
+are idempotent. Both sources require reconciliation extension `0.1.0` (upstream development Core containing #394 / `828f0f6`);
 a `0.5.2` version label alone is insufficient.
 At most 128 MiB of JSON and 16 MiB per conversation are accepted; split larger exports before importing.
 Raw conversation JSON is retained in MemCastle, including branch relationships, message metadata and any attachment/reference descriptors the export contains.
@@ -111,7 +116,7 @@ fake conversations. Bootstrap/update traversal watermarks are not lifecycle excl
 
 ## Development
 
-Build the source for `wasm32-wasip2` with Cargo and use `memcastle plugin package` from the provider root;
+Build the source with Rust 1.100+ for `wasm32-wasip3` and use `memcastle plugin package` from the provider root;
 `memcastle source test sources/chatgpt --no-build` runs JSON, ZIP and empty-export fixtures.
 `cargo test --manifest-path sources/chatgpt/Cargo.toml --locked` runs the native export-parser tests, and
 `node scripts/smoke_chatgpt.mjs` exercises the

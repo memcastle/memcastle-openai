@@ -21,7 +21,7 @@ memcastle miner run codex-project
 
 ## Project scope and reconciliation
 
-Requires development Core containing reconciliation #378 (`c311d09`); a `0.5.2` version label alone is insufficient.
+Requires upstream development Core containing WASI 0.3 and reconciliation (`828f0f6`); a `0.5.2` version label alone is insufficient.
 The optional `project` path includes sessions whose session-metadata working directory equals that path or is
 a descendant. Matching is lexical and component-based: `/work/app` excludes `/work/application`. Historical
 directories need not still exist; symlinks are not resolved. Relative CLI path options are resolved by Core;

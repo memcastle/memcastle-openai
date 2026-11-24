@@ -1,7 +1,9 @@
 # Contributing to memcastle-openai
 
-Install Rust with the `wasm32-wasip2` target, Bun and a reconciliation-capable Core binary
-(development containing `c311d09`, not just any binary labeled `0.5.2`).
+Install Rust 1.100+ with `wasm32-wasip3`, Bun and upstream development Core
+(containing WASI 0.3 and reconciliation at `828f0f6`, not just any binary labeled `0.5.2`).
+Use `mise tasks ls` for typed module tasks described in [root tasks](README.md#modules-and-root-tasks).
+Validate components with wasm-tools 1.263.0 through `scripts/validate_component.py` before host conformance.
 The Codex source reads dated JSONL rollouts in `sources/codex/src/lib.rs`.
 ChatGPT's export and experimental web readers live under `sources/chatgpt/src/`;
 the Codex marketplace integration lives under `integrations/codex/plugin/`.
@@ -20,7 +22,7 @@ Set `MEMCASTLE_BIN` to an extension-capable Core binary, and build both source c
 ```sh
 cargo test --manifest-path sources/codex/Cargo.toml --locked
 cargo test --manifest-path sources/chatgpt/Cargo.toml --locked
-# Build both source components for wasm32-wasip2 and copy them to sources/<id>/source.wasm first.
+# Build both source components for wasm32-wasip3 and copy them to sources/<id>/source.wasm first.
 (cd integrations/codex && bun install && bun run build && bun test)
 archive="$("$MEMCASTLE_BIN" plugin package --json | jq -r .archive)"
 "$MEMCASTLE_BIN" plugin test "$archive"

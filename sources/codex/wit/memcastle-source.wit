@@ -1,4 +1,4 @@
-// The MemCastle source contract, version 0.4.0 (docs/adr/026, docs/writing-sources.md).
+// The MemCastle source contract, version 0.5.0 (docs/adr/026, docs/writing-sources.md).
 //
 // A source is a WebAssembly Component implementing the `source` world. It is the same logical contract as the
 // native `SourceAdapter` trait: the host calls `identify`, `discover`, `read` and `normalize`, and does everything
@@ -6,7 +6,7 @@
 //
 // Cursors and metadata cross the boundary as JSON text, so the contract does not need to change for a source to
 // carry richer ones. `contract` in `memcastle-source.toml` names the version of this file a source was built for.
-package memcastle:source@0.4.0;
+package memcastle:source@0.5.0;
 
 interface types {
     /// The identity of a place that is mined.
@@ -102,6 +102,10 @@ interface host {
     /// sees the access token, and asks again for each call it makes, because one may have expired since. It is refused
     /// when the manifest declares no sign-in, and `normalize` never gets one.
     access-token: func() -> result<string, string>;
+
+    /// The selected env/file credential for this mining job, when `[permissions] credential = true` was consented.
+    /// Only acquisition calls (identify, discover, read, and the extension's reconcile/acquire) may request it.
+    /// Normalize never receives it. It is not placed in WASI's environment or a host-run process.
     source-credential: func() -> result<string, string>;
 }
 
@@ -112,7 +116,8 @@ interface adapter {
     /// strings; the keys the manifest's `[options]` declares) and return the source's identity, carrying the options
     /// as it normalised them. Two spellings of the same place must give the same identity. An option the source does
     /// not understand is an `invalid-input` error, never ignored.
-    identify: func(locator: option<string>, options: list<tuple<string, string>>) -> result<source-ref, source-error>;
+    // Acquisition may suspend on WASI 0.3 I/O; sync-typed functions cannot wait on component tasks.
+    identify: async func(locator: option<string>, options: list<tuple<string, string>>) -> result<source-ref, source-error>;
 
     /// The wing drawers are filed under when the caller chooses none.
     default-wing: func(source: source-ref) -> string;
@@ -121,10 +126,10 @@ interface adapter {
     default-room: func() -> string;
 
     /// Candidates strictly after `cursor` (JSON; `null` is the beginning), in cursor order, at most `limit`.
-    discover: func(source: source-ref, cursor: string, limit: u32) -> result<discovery, source-error>;
+    discover: async func(source: source-ref, cursor: string, limit: u32) -> result<discovery, source-error>;
 
     /// Read a candidate, or return none to skip it (gone since discovery, binary, too large).
-    read: func(source: source-ref, candidate: candidate) -> result<option<raw-document>, source-error>;
+    read: async func(source: source-ref, candidate: candidate) -> result<option<raw-document>, source-error>;
 
     /// Express a raw document as a canonical one. Pure: the host runs it with no filesystem, no environment, no
     /// network and no process access, whatever the manifest grants.
@@ -136,6 +141,8 @@ world source {
     export adapter;
 }
 
+// Optional extension, selected by compatibility.reconciliation = "0.1.0".
+// The extension shares the source package's async acquisition baseline.
 interface reconciliation {
     use types.{source-ref, candidate, raw-document, source-error};
     record known-document {
@@ -152,9 +159,9 @@ interface reconciliation {
         exhausted: bool,
         cursor-after: option<string>,
     }
-    reconcile: func(source: source-ref, known: known-document) -> result<decision, source-error>;
-    discover: func(source: source-ref, cursor: string, limit: u32) -> result<discovery-page, source-error>;
-    acquire: func(source: source-ref, candidate: candidate) -> result<acquisition, source-error>;
+    reconcile: async func(source: source-ref, known: known-document) -> result<decision, source-error>;
+    discover: async func(source: source-ref, cursor: string, limit: u32) -> result<discovery-page, source-error>;
+    acquire: async func(source: source-ref, candidate: candidate) -> result<acquisition, source-error>;
 }
 
 world reconciled-source {

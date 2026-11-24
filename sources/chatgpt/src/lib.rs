@@ -10,6 +10,7 @@ use sha2::{Digest, Sha256};
 wit_bindgen::generate!({
     path: "wit",
     world: "reconciled-source",
+    sync: true,
 });
 
 use exports::memcastle::source::adapter::Guest;
