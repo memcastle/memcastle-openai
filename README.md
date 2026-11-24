@@ -1,5 +1,18 @@
 # memcastle-openai
 
+## Modules and root tasks
+
+- Sources: [codex](sources/codex/), [chatgpt](sources/chatgpt/).
+- Integration: [codex](integrations/codex/).
+
+Use `mise tasks ls` for each module's typed `build`, `test`, `lint`, and `format:check` tasks.
+For example, `mise run source:codex:build` stages its package-ready component.
+Install integration dependencies before running `integration:codex:*` tasks.
+Requires Rust 1.100+, `wasm32-wasip3`, wasm-tools 1.263.0, and upstream development Core containing `828f0f6`.
+Stable 0.5.2 predates WASI 0.3 despite sharing the development version string; the compatibility range is transitional.
+Validate each source with `python3 scripts/validate_component.py source sources/<id>/source.wasm`.
+Native tests do not replace production-component conformance or archive/reconciliation lifecycle checks.
+
 [![CI][ci-badge]][ci-workflow] [![Codecov][codecov-badge]][codecov-project]
 
 [ci-badge]: https://github.com/memcastle/memcastle-openai/actions/workflows/ci.yaml/badge.svg?branch=main
@@ -18,7 +31,7 @@ and [Codex integration](integrations/codex/README.md) for their respective behav
 ## Install
 
 Both sources require Core's reconciliation extension `0.1.0`, currently development Core containing
-[`c311d09` (#378)](https://github.com/memcastle/memcastle/pull/378). A `0.5.2` version label alone does not
+[`828f0f6` (#394)](https://github.com/memcastle/memcastle/pull/394), including reconciliation #378. A `0.5.2` version label alone does not
 establish support. When a release is available in the [MemCastle plugin catalogue](https://memcastle.github.io/plugins.json),
 install it by ID with an extension-capable Core binary:
 
@@ -55,7 +68,7 @@ no automatic history migration. Package `--adopt-source` transfers package owner
 
 ## Build and test locally
 
-Install Rust with `wasm32-wasip2`, Bun and an extension-capable Core binary. Build both source components to their
+Install Rust 1.100+ with `wasm32-wasip3`, Bun and upstream development Core. Build both source components to their
 `sources/<id>/source.wasm` paths and the Codex integration into `integrations/codex/dist/` before packaging.
 Commit both generated source `Cargo.lock` files. See the CI workflow for reproducible build and copy steps.
 

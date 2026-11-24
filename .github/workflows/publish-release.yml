@@ -43,7 +43,7 @@ jobs:
           ref: ${{ inputs.tag }}
           fetch-depth: 0
           persist-credentials: false
-      - uses: memcastle/memcastle@c311d09d839afea2e652e8f31e088ebc9792a0f5
+      - uses: memcastle/memcastle@main
         id: core
         with:
           version: development

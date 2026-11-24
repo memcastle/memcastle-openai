@@ -11,6 +11,7 @@ use serde_json::{Value, json};
 wit_bindgen::generate!({
     path: "wit",
     world: "reconciled-source",
+    sync: true,
 });
 
 use exports::memcastle::source::adapter::Guest;

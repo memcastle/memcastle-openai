@@ -2,13 +2,14 @@
 name = "memcastle-source-chatgpt"
 version = "0.1.0"
 edition = "2024"
+rust-version = "1.100"
 publish = false
 
 [lib]
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-wit-bindgen = "0.57"
+wit-bindgen = "0.63.0"
 serde = "1"
 serde_json = { version = "1", features = ["raw_value"] }
 sha2 = "0.10"
