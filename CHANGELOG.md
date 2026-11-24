@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.0.0 - 2026-11-24
+
+
+### Chores
+- Pull latest plugin and source templates (e8c4acf)
+
+### Features
+- Adopt Core-managed reconciliation (#19) (989a553)
+
+### build
+- Require migrated development Core and refresh bindings (6daba06)
+- Migrate to Rust 1.100 and WASI 0.3 (#22) (444b722)
+
+### tpl
+- Render memcastle-plugin at main (b60ca87)
 ## 0.1.0 - 2026-10-21
 
 
